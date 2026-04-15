@@ -1,0 +1,67 @@
+/* src/design-tokens.css */
+:root {
+  /* Surfaces */
+  --bg: #0f172a;
+  --bg-subtle: #0d1526;
+  --surface: #1e293b;
+  --surface-alt: #253347;
+  --surface-overlay: rgba(30, 41, 59, 0.97);
+  --line: #334155;
+  --line-strong: #475569;
+  --line-muted: #293548;
+
+  /* Text */
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --muted: #64748b;
+
+  /* Brand */
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --accent-soft: #0c4a6e;
+  --accent-focus: rgba(56, 189, 248, 0.18);
+
+  /* Semantic */
+  --success: #4ade80;
+  --success-soft: #14532d;
+  --warn: #fbbf24;
+  --warn-soft: #451a03;
+  --danger: #f87171;
+  --danger-strong: #ef4444;
+  --danger-soft: #450a0a;
+  --danger-border: #7f1d1d;
+  --info: #38bdf8;
+
+  /* Alarm classes */
+  --alarm-1: #4ade80;
+  --alarm-1-soft: #14532d;
+  --alarm-2: #fbbf24;
+  --alarm-2-soft: #451a03;
+  --alarm-3: #f87171;
+  --alarm-3-soft: #450a0a;
+
+  /* Phase colors */
+  --phase-design: #38bdf8;
+  --phase-frozen: #a78bfa;
+  --phase-review: #fb923c;
+  --phase-fat: #4ade80;
+  --phase-sat: #fbbf24;
+
+  /* Elevation */
+  --shadow: 0 10px 28px rgba(0,0,0,0.4);
+  --shadow-soft: 0 4px 14px rgba(0,0,0,0.25);
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
