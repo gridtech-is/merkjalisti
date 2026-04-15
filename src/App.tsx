@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { NewProject } from './pages/NewProject';
 import { ProjectView } from './pages/ProjectView';
 import { NewBay } from './pages/NewBay';
+import { BayView } from './pages/BayView';
 import { NotFound } from './pages/NotFound';
 import './styles.css';
 
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="projects/new" element={<NewProject />} />
             <Route path="projects/:projectId" element={<ProjectView />} />
             <Route path="projects/:projectId/bays/new" element={<NewBay />} />
+            <Route path="projects/:projectId/bays/:bayId" element={<BayView />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
