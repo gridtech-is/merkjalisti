@@ -5,6 +5,7 @@ import { TokenSetup } from './components/TokenSetup';
 import { AppShell } from './components/AppShell';
 import { ApiProvider } from './context/ApiContext';
 import { Dashboard } from './pages/Dashboard';
+import { NewProject } from './pages/NewProject';
 import { NotFound } from './pages/NotFound';
 import './styles.css';
 
@@ -21,6 +22,7 @@ export default function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<Dashboard />} />
+            <Route path="projects/new" element={<NewProject />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
