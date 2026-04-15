@@ -18,6 +18,7 @@ export function ProjectView() {
   const [bays, setBays] = useState<Bay[]>([]);
   const [tab, setTab] = useState<Tab>('bays');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -28,11 +29,20 @@ export function ProjectView() {
       setProject(files.project);
       setEquipment(files.equipment);
       setBays(bayList);
+    }).catch(() => {
+      setLoadError('Gat ekki hlaðið verkefni. Það gæti verið ófullkomið eða eytt.');
     }).finally(() => setLoading(false));
   }, [api, projectId]);
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
-  if (!project) return <p style={{ color: 'var(--danger)' }}>Verkefni finnst ekki.</p>;
+  if (loadError || !project) return (
+    <div>
+      <p style={{ color: 'var(--danger)', marginBottom: 'var(--space-4)' }}>
+        {loadError || 'Verkefni finnst ekki.'}
+      </p>
+      <Button variant="ghost" onClick={() => navigate('/')}>← Til baka</Button>
+    </div>
+  );
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'bays', label: `Reitir (${bays.length})` },
