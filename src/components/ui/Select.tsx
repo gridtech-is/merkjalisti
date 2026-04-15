@@ -1,4 +1,5 @@
 // src/components/ui/Select.tsx
+import { useState } from 'react';
 
 interface Option {
   value: string;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function Select({ label, value, onChange, options, required }: Props) {
+  const [focused, setFocused] = useState(false);
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
@@ -22,10 +24,12 @@ export function Select({ label, value, onChange, options, required }: Props) {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         required={required}
         style={{
           background: 'var(--surface-alt)',
-          border: '1px solid var(--line)',
+          border: `1px solid ${focused ? 'var(--accent)' : 'var(--line)'}`,
           borderRadius: 'var(--radius-sm)',
           color: 'var(--text)',
           padding: '8px 12px',
@@ -34,6 +38,7 @@ export function Select({ label, value, onChange, options, required }: Props) {
           outline: 'none',
           width: '100%',
           cursor: 'pointer',
+          boxSizing: 'border-box',
         }}
       >
         {options.map(opt => (

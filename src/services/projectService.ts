@@ -50,13 +50,13 @@ export async function createProject(
   };
 
   const msg = `[DESIGN] Nýtt verkefni: ${name}`;
-  const [ps, es, ss, cs, ts] = await Promise.all([
-    api.writeJson(`${base}/project.json`, project, null, msg),
-    api.writeJson(`${base}/equipment.json`, equipment, null, msg),
-    api.writeJson(`${base}/station_signals.json`, stationSignals, null, msg),
-    api.writeJson(`${base}/changelog.json`, changelog, null, msg),
-    api.writeJson(`${base}/testing.json`, testing, null, msg),
-  ]);
+  // Sequential writes — GitHub Contents API creates one commit per call;
+  // parallel writes to the same branch cause 409 Conflict.
+  const ps = await api.writeJson(`${base}/project.json`, project, null, msg);
+  const es = await api.writeJson(`${base}/equipment.json`, equipment, null, msg);
+  const ss = await api.writeJson(`${base}/station_signals.json`, stationSignals, null, msg);
+  const cs = await api.writeJson(`${base}/changelog.json`, changelog, null, msg);
+  const ts = await api.writeJson(`${base}/testing.json`, testing, null, msg);
 
   return {
     project, projectSha: ps,
@@ -68,7 +68,12 @@ export async function createProject(
 }
 
 export async function listProjects(api: GitHubApi): Promise<Project[]> {
-  const entries = await api.listDirectory('projects');
+  let entries: string[];
+  try {
+    entries = await api.listDirectory('projects');
+  } catch {
+    return []; // projects/ directory doesn't exist yet
+  }
   const uuids = entries.filter(e => /^[0-9a-f-]{36}$/.test(e));
 
   const results = await Promise.allSettled(
@@ -107,13 +112,11 @@ export async function saveProject(
   const phase = files.project.phase;
   const msg = `[${phase}] Vista verkefni: ${files.project.name}`;
 
-  const [ps, es, ss, cs, ts] = await Promise.all([
-    api.writeJson(`${base}/project.json`, files.project, files.projectSha, msg),
-    api.writeJson(`${base}/equipment.json`, files.equipment, files.equipmentSha, msg),
-    api.writeJson(`${base}/station_signals.json`, files.stationSignals, files.stationSignalsSha, msg),
-    api.writeJson(`${base}/changelog.json`, files.changelog, files.changelogSha, msg),
-    api.writeJson(`${base}/testing.json`, files.testing, files.testingSha, msg),
-  ]);
+  const ps = await api.writeJson(`${base}/project.json`, files.project, files.projectSha, msg);
+  const es = await api.writeJson(`${base}/equipment.json`, files.equipment, files.equipmentSha, msg);
+  const ss = await api.writeJson(`${base}/station_signals.json`, files.stationSignals, files.stationSignalsSha, msg);
+  const cs = await api.writeJson(`${base}/changelog.json`, files.changelog, files.changelogSha, msg);
+  const ts = await api.writeJson(`${base}/testing.json`, files.testing, files.testingSha, msg);
 
   return {
     ...files,
