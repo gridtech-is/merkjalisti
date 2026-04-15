@@ -6,8 +6,9 @@ import { AppShell } from './components/AppShell';
 import { ApiProvider } from './context/ApiContext';
 import { Dashboard } from './pages/Dashboard';
 import { NewProject } from './pages/NewProject';
-import { NotFound } from './pages/NotFound';
 import { ProjectView } from './pages/ProjectView';
+import { NewBay } from './pages/NewBay';
+import { NotFound } from './pages/NotFound';
 import './styles.css';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="projects/new" element={<NewProject />} />
             <Route path="projects/:projectId" element={<ProjectView />} />
+            <Route path="projects/:projectId/bays/new" element={<NewBay />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
