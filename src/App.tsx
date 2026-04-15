@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { loadToken } from './github/token';
 import { TokenSetup } from './components/TokenSetup';
 import { AppShell } from './components/AppShell';
+import { ApiProvider } from './context/ApiContext';
 import { Dashboard } from './pages/Dashboard';
 import { NotFound } from './pages/NotFound';
 import './styles.css';
@@ -15,13 +16,15 @@ export default function App() {
   }
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route index element={<Dashboard />} />
-          <Route path="*" element={<NotFound />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+    <ApiProvider>
+      <HashRouter>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<Dashboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </ApiProvider>
   );
 }
