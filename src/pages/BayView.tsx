@@ -6,7 +6,7 @@ import { loadBay, saveBay, type BayFile } from '../services/bayService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
-import { SignalFormModal } from '../components/SignalFormModal';
+import { SignalPickerModal } from '../components/SignalFormModal';
 import type { BaySignal } from '../types';
 
 export function BayView() {
@@ -17,8 +17,7 @@ export function BayView() {
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [modalSignal, setModalSignal] = useState<BaySignal | null | undefined>(undefined);
-  // undefined = modal closed, null = add mode, BaySignal = edit mode
+  const [showPicker, setShowPicker] = useState(false);
   const bayFileRef = useRef<BayFile | null>(null);
   bayFileRef.current = bayFile;
 
@@ -29,25 +28,13 @@ export function BayView() {
       .finally(() => setLoading(false));
   }, [api, projectId, bayId]);
 
-  const handleAdd = (signal: BaySignal) => {
+  const handleAdd = (signals: BaySignal[]) => {
     setBayFile(prev => {
       if (!prev) return prev;
-      return { ...prev, bay: { ...prev.bay, signals: [...prev.bay.signals, signal] } };
+      return { ...prev, bay: { ...prev.bay, signals: [...prev.bay.signals, ...signals] } };
     });
     setIsDirty(true);
-    setModalSignal(undefined);
-  };
-
-  const handleEditSave = (signal: BaySignal) => {
-    setBayFile(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        bay: { ...prev.bay, signals: prev.bay.signals.map(s => s.id === signal.id ? signal : s) },
-      };
-    });
-    setIsDirty(true);
-    setModalSignal(undefined);
+    setShowPicker(false);
   };
 
   const handleDelete = (signalId: string) => {
@@ -115,7 +102,7 @@ export function BayView() {
               ✓ Vistað {lastSaved.toLocaleTimeString('is-IS')}
             </span>
           )}
-          <Button size="sm" onClick={() => setModalSignal(null)}>+ Bæta við merki</Button>
+          <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
           <Button
             size="sm"
             onClick={commitChanges}
@@ -130,15 +117,13 @@ export function BayView() {
         signals={bay.signals}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
-        onEdit={sig => setModalSignal(sig)}
       />
 
-      {modalSignal !== undefined && (
-        <SignalFormModal
-          initial={modalSignal}
+      {showPicker && (
+        <SignalPickerModal
           phase="DESIGN"
-          onSave={modalSignal === null ? handleAdd : handleEditSave}
-          onClose={() => setModalSignal(undefined)}
+          onAdd={handleAdd}
+          onClose={() => setShowPicker(false)}
         />
       )}
     </div>

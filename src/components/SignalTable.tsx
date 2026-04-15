@@ -6,7 +6,6 @@ interface Props {
   signals: BaySignal[];
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
   onDelete: (signalId: string) => void;
-  onEdit: (signal: BaySignal) => void;
 }
 
 const SOURCE_OPTIONS: { value: SourceType; label: string }[] = [
@@ -51,7 +50,7 @@ const editableInput: React.CSSProperties = {
   outline: 'none',
 };
 
-export function SignalTable({ signals, onUpdate, onDelete, onEdit }: Props) {
+export function SignalTable({ signals, onUpdate, onDelete }: Props) {
   if (signals.length === 0) {
     return (
       <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 'var(--space-8)' }}>
@@ -65,7 +64,7 @@ export function SignalTable({ signals, onUpdate, onDelete, onEdit }: Props) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
-            {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl', 'IEC 61850 address', 'Fasi', 'Aðgerðir'].map(h => (
+            {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl', 'IEC 61850 address', 'Fasi', ''].map(h => (
               <th key={h} style={headerStyle}>{h}</th>
             ))}
           </tr>
@@ -176,8 +175,6 @@ export function SignalTable({ signals, onUpdate, onDelete, onEdit }: Props) {
                 {sig.phase_added}
               </td>
               <td style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                <Button variant="ghost" size="sm" onClick={() => onEdit(sig)}>Breyta</Button>
-                {' '}
                 <Button variant="danger" size="sm" onClick={() => onDelete(sig.id)}>Eyða</Button>
               </td>
             </tr>
