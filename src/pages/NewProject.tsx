@@ -37,7 +37,7 @@ export function NewProject() {
   return (
     <div style={{ maxWidth: '640px' }}>
       <div style={{ marginBottom: 'var(--space-6)' }}>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+        <Button variant="ghost" size="sm" onClick={() => step === 'equipment' ? setStep('name') : navigate('/')}>
           ← Til baka
         </Button>
       </div>
