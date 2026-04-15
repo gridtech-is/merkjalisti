@@ -96,7 +96,7 @@ export function SignalTable({ signals, onUpdate }: Props) {
                   }}
                   onChange={() => {}}
                   defaultValue={sig.name_is}
-                  key={sig.name_is}
+                  key={`is-${sig.id}`}
                 />
               </td>
               <td style={{ ...cellStyle, minWidth: '140px' }}>
@@ -109,7 +109,7 @@ export function SignalTable({ signals, onUpdate }: Props) {
                     onUpdate(sig.id, { name_en: e.target.value || null });
                   }}
                   onChange={() => {}}
-                  key={`en-${sig.name_en}`}
+                  key={`en-${sig.id}`}
                 />
               </td>
               <td style={{ ...cellStyle, textAlign: 'center' }}>
@@ -166,7 +166,7 @@ export function SignalTable({ signals, onUpdate }: Props) {
                     onUpdate(sig.id, { iec61850_address: e.target.value || null });
                   }}
                   onChange={() => {}}
-                  key={`addr-${sig.iec61850_address}`}
+                  key={`addr-${sig.id}`}
                 />
               </td>
               <td style={{ ...cellStyle, fontSize: '10px', color: 'var(--muted)' }}>
