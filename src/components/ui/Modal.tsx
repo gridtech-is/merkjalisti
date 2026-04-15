@@ -1,5 +1,5 @@
 // src/components/ui/Modal.tsx
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 interface Props {
   title: string;
@@ -9,6 +9,12 @@ interface Props {
 }
 
 export function Modal({ title, onClose, children, width = '520px' }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
@@ -39,6 +45,8 @@ export function Modal({ title, onClose, children, width = '520px' }: Props) {
         }}>
           <span style={{ fontWeight: 600, fontSize: '15px' }}>{title}</span>
           <button
+            type="button"
+            aria-label="Loka"
             onClick={onClose}
             style={{
               background: 'none', border: 'none',

@@ -1,5 +1,4 @@
-// src/context/ApiContext.tsx
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { GitHubApi } from '../github/api';
 import { loadToken } from '../github/token';
 
@@ -16,10 +15,15 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   const config = loadToken();
   if (!config) throw new Error('ApiProvider requires a saved token');
 
-  const api = new GitHubApi(config.token, config.owner, config.repo);
+  const value = useMemo(() => ({
+    api: new GitHubApi(config.token, config.owner, config.repo),
+    owner: config.owner,
+    repo: config.repo,
+    userName: config.owner,
+  }), [config.token, config.owner, config.repo]);
 
   return (
-    <ApiContext.Provider value={{ api, owner: config.owner, repo: config.repo, userName: config.owner }}>
+    <ApiContext.Provider value={value}>
       {children}
     </ApiContext.Provider>
   );
