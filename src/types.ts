@@ -25,14 +25,6 @@ export interface SignalLibraryEntry {
   description_is: string | null;
   name_en: string | null;
   state_id: string | null;
-  state_00_is: string | null;
-  state_00_en: string | null;
-  state_01_is: string | null;
-  state_01_en: string | null;
-  state_10_is: string | null;
-  state_10_en: string | null;
-  state_11_is: string | null;
-  state_11_en: string | null;
   signal_type: string | null;
   units: string | null;
   severity_code: string | null;
