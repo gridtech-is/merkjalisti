@@ -4,12 +4,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel } from '../services/exportService';
+import { ChangelogTab } from '../components/ChangelogTab';
 import { listBays } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase } from '../types';
 
-type Tab = 'bays' | 'equipment' | 'station' | 'overview';
+type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
 type EqTab = 'apparatus' | 'ied';
 
 function uuid(): string {
@@ -191,6 +192,7 @@ export function ProjectView() {
     { id: 'equipment', label: `Tæki (${equipment.length})` },
     { id: 'station', label: 'Stöðvarmerki' },
     { id: 'overview', label: 'Heildar listi' },
+    { id: 'changelog', label: 'Breytingasaga' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -503,6 +505,7 @@ export function ProjectView() {
           Heildar listi — kemur í Plan 3
         </Card>
       )}
+      {tab === 'changelog' && projectId && <ChangelogTab projectId={projectId} />}
     </div>
   );
 }

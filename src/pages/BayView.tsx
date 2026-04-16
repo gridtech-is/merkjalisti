@@ -11,6 +11,7 @@ import { SignalPickerModal } from '../components/SignalFormModal';
 import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
+import { appendChange } from '../services/changelogService';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState } from '../types';
 
 export function BayView() {
@@ -73,14 +74,41 @@ export function BayView() {
     });
     setIsDirty(true);
     setShowPicker(false);
+    signals.forEach(sig => {
+      appendChange(api, projectId!, {
+        user: userName,
+        phase: 'DESIGN',
+        type: 'SIGNAL_ADDED',
+        target_id: sig.id,
+        target_type: 'signal',
+        field: null,
+        old_value: null,
+        new_value: `${sig.equipment_code}_${sig.signal_name}`,
+        comment: `Merki bætt við: ${sig.signal_name} í ${bayFileRef.current?.bay.display_id}`,
+      });
+    });
   };
 
   const handleDelete = (signalId: string) => {
+    const sig = bayFileRef.current?.bay.signals.find(s => s.id === signalId);
     setBayFile(prev => {
       if (!prev) return prev;
       return { ...prev, bay: { ...prev.bay, signals: prev.bay.signals.filter(s => s.id !== signalId) } };
     });
     setIsDirty(true);
+    if (sig) {
+      appendChange(api, projectId!, {
+        user: userName,
+        phase: 'DESIGN',
+        type: 'SIGNAL_REMOVED',
+        target_id: signalId,
+        target_type: 'signal',
+        field: null,
+        old_value: `${sig.equipment_code}_${sig.signal_name}`,
+        new_value: null,
+        comment: `Merki eytt: ${sig.signal_name}`,
+      });
+    }
   };
 
   const handleUpdate = (signalId: string, patch: Partial<BaySignal>) => {
