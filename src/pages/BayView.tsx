@@ -188,6 +188,7 @@ export function BayView() {
 
       <SignalTable
         signals={bay.signals}
+        equipment={bayEquipment}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
