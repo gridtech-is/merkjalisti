@@ -1,11 +1,15 @@
 // src/components/SignalTable.tsx
 import { useState } from 'react';
 import { Button } from './ui';
-import type { BaySignal, Equipment, SourceType } from '../types';
+import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType } from '../types';
 
 interface Props {
   signals: BaySignal[];
   equipment: Equipment[];
+  library?: SignalLibraryEntry[];
+  states?: SignalState[];
+  bayDisplayId?: string;
+  reviewMode?: boolean;
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
   onDelete: (signalId: string) => void;
 }
@@ -60,8 +64,13 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
+export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode: _reviewMode = false, onUpdate, onDelete }: Props) {
+  // Build lookup index: code → library entry
+  const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
+  // Build state index: id → SignalState
+  const stateIndex = new Map(states.map(s => [s.id, s]));
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
   // Block edit state
   const [blockIed, setBlockIed] = useState('');
   const [blockPrefix, setBlockPrefix] = useState('');
@@ -171,6 +180,20 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
         </div>
       )}
 
+      {/* IS/EN toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
+          {(['is', 'en'] as const).map(lang => (
+            <button key={lang} type="button" onClick={() => setStateLang(lang)}
+              style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 600, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                background: stateLang === lang ? 'var(--accent)' : 'transparent',
+                color: stateLang === lang ? '#fff' : 'var(--text-secondary)' }}>
+              {lang.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
           <thead>
@@ -178,7 +201,11 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
               <th style={head}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
               </th>
-              {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
+              {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
+                <th key={h} style={head}>{h}</th>
+              ))}
+              <th colSpan={2} style={{ ...head, borderLeft: '2px solid var(--line)', textAlign: 'center' }}>Stöður</th>
+              {['Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                 <th key={h} style={head}>{h}</th>
               ))}
               <th colSpan={5} style={{ ...head, borderLeft: '2px solid var(--accent)', color: 'var(--accent)', textAlign: 'center' }}>
@@ -192,7 +219,13 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
             </tr>
             <tr>
               <th style={{ ...head, top: '33px' }}></th>
-              {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
+              {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
+                <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
+              ))}
+              {(['Staða', 'Tegund'] as string[]).map((h, i) => (
+                <th key={`st2-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
+              ))}
+              {['Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                 <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               ))}
               {(['Tech Key', 'LN Prefix', 'LN Inst', 'RCB', 'Dataset Entry'] as string[]).map((h, i) => (
@@ -224,32 +257,185 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
                       <span style={{ fontFamily: 'monospace', color: 'var(--accent)', fontSize: '11px' }}>{sig.equipment_code}</span>
                     )}
                   </td>
-                  <td style={cell}>
-                    <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{sig.signal_name}</span>
-                  </td>
-                  <td style={{ ...cell, minWidth: '150px' }}>
-                    <input style={{ ...eInput, fontFamily: 'inherit' }} maxLength={24}
-                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { name_is: e.target.value }); }}
-                      onChange={() => {}} defaultValue={sig.name_is} key={`is-${sig.id}`} />
-                  </td>
-                  <td style={{ ...cell, minWidth: '130px' }}>
-                    <input style={{ ...eInput, fontFamily: 'inherit' }}
-                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { name_en: e.target.value || null }); }}
-                      onChange={() => {}} defaultValue={sig.name_en ?? ''} key={`en-${sig.id}`} />
-                  </td>
-                  <td style={{ ...cell, textAlign: 'center' }}>
-                    <input type="checkbox" checked={sig.is_alarm}
-                      onChange={e => onUpdate(sig.id, { is_alarm: e.target.checked, alarm_class: e.target.checked ? (sig.alarm_class ?? 1) : null })}
-                      style={{ cursor: 'pointer' }} />
-                  </td>
-                  <td style={{ ...cell, minWidth: '90px' }}>
-                    {sig.is_alarm && (
-                      <select value={sig.alarm_class?.toString() ?? '1'}
-                        onChange={e => onUpdate(sig.id, { alarm_class: Number(e.target.value) as 1|2|3 })} style={eSelect}>
-                        {[['1','F1'],['2','F2'],['3','F3']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+                  <td style={{ ...cell, minWidth: '120px' }}>
+                    <input
+                      style={{ ...eInput, color: 'var(--accent)' }}
+                      defaultValue={sig.signal_name}
+                      key={`sn-${sig.id}-${sig.signal_name}`}
+                      list={`lib-${sig.id}`}
+                      placeholder="kóði"
+                      onFocus={onFocus}
+                      onBlur={e => {
+                        onBlurReset(e);
+                        const newCode = e.target.value.trim();
+                        if (newCode === sig.signal_name) return;
+                        const entry = libraryIndex.get(newCode);
+                        if (entry) {
+                          onUpdate(sig.id, {
+                            signal_name: newCode,
+                            library_id: entry.id,
+                            name_is: entry.name_is,
+                            name_en: entry.name_en ?? null,
+                            is_alarm: entry.is_alarm,
+                            alarm_class: entry.alarm_class ?? null,
+                            source_type: entry.source_type,
+                            state_id: entry.state_id ?? null,
+                            iec61850_ld: entry.iec61850_ld ?? null,
+                            iec61850_ln: entry.iec61850_ln ?? null,
+                            iec61850_do_da: entry.iec61850_do_da ?? null,
+                            iec61850_fc: entry.iec61850_fc ?? null,
+                            iec61850_cdc: entry.iec61850_cdc ?? null,
+                            iec61850_dataset: entry.iec61850_dataset ?? null,
+                          });
+                        } else {
+                          onUpdate(sig.id, { signal_name: newCode });
+                        }
+                      }}
+                      onChange={() => {}}
+                    />
+                    {library.length > 0 && (
+                      <datalist id={`lib-${sig.id}`}>
+                        {library.filter(e => e.code).map(e => (
+                          <option key={e.code!} value={e.code!}>{e.name_is}</option>
+                        ))}
+                      </datalist>
                     )}
                   </td>
+                  {/* Kóði — computed identifier */}
+                  <td style={{ ...cell, minWidth: '160px' }}>
+                    {(() => {
+                      const code = [bayDisplayId, sig.equipment_code, sig.signal_name].filter(Boolean).join('_');
+                      return (
+                        <span
+                          title="Smelltu til að afrita"
+                          onClick={() => navigator.clipboard?.writeText(code)}
+                          style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'copy', whiteSpace: 'nowrap' }}
+                        >{code}</span>
+                      );
+                    })()}
+                  </td>
+                  <td style={{ ...cell, minWidth: '150px' }}>
+                    {stateLang === 'is' ? (
+                      <input style={{ ...eInput, fontFamily: 'inherit' }}
+                        onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { name_is: e.target.value }); }}
+                        onChange={() => {}} defaultValue={sig.name_is} key={`is-${sig.id}-${sig.name_is}`} />
+                    ) : (
+                      <input style={{ ...eInput, fontFamily: 'inherit' }}
+                        onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { name_en: e.target.value || null }); }}
+                        onChange={() => {}} defaultValue={sig.name_en ?? ''} key={`en-${sig.id}-${sig.name_en}`} />
+                    )}
+                  </td>
+                  {/* Stöður — texti only */}
+                  {(() => {
+                    const st = sig.state_id ? stateIndex.get(sig.state_id) : undefined;
+                    const ORDER = ['00', '01', '10', '11'] as const;
+                    const stateRows = st
+                      ? ORDER.map(k => {
+                          const stEntry = st.states[k];
+                          if (!stEntry) return null;
+                          const text = stateLang === 'is' ? stEntry.is : stEntry.en;
+                          return { k, text: text ?? k };
+                        }).filter(Boolean)
+                      : [];
+                    return (
+                      <>
+                        <td style={{ ...cell, borderLeft: '2px solid var(--line)', minWidth: '180px', verticalAlign: 'top', padding: '4px 6px' }}>
+                          {stateRows.length > 0 ? stateRows.map(row => {
+                            if (!row) return null;
+                            return (
+                              <div key={row.k} style={{ display: 'flex', gap: '6px', marginBottom: '2px', fontSize: '11px' }}>
+                                <span style={{ fontFamily: 'monospace', color: 'var(--muted)', minWidth: '22px' }}>{row.k}</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>{row.text}</span>
+                              </div>
+                            );
+                          }) : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
+                        </td>
+                        <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{st?.type ?? '—'}</td>
+                      </>
+                    );
+                  })()}
+                  {/* Alarm — per-state checkboxes */}
+                  {(() => {
+                    const st = sig.state_id ? stateIndex.get(sig.state_id) : undefined;
+                    const ORDER = ['00', '01', '10', '11'] as const;
+                    const map: StateAlarmMap = sig.state_alarm_map ?? {};
+
+                    const updateStateMap = (key: '00'|'01'|'10'|'11', isAlarm: boolean) => {
+                      const current = map[key] ?? { is_alarm: false, is_event: false, alarm_class: null };
+                      const updated: StateAlarmMap = { ...map, [key]: { ...current, is_alarm: isAlarm, alarm_class: isAlarm ? (current.alarm_class ?? 1) : null } };
+                      onUpdate(sig.id, { state_alarm_map: updated });
+                    };
+
+                    const updateAlarmClass = (key: '00'|'01'|'10'|'11', cls: AlarmClass) => {
+                      const current = map[key] ?? { is_alarm: false, is_event: false, alarm_class: null };
+                      const updated: StateAlarmMap = { ...map, [key]: { ...current, alarm_class: cls } };
+                      onUpdate(sig.id, { state_alarm_map: updated });
+                    };
+
+                    if (!st) {
+                      // No state — simple alarm checkbox
+                      return (
+                        <>
+                          <td style={{ ...cell, textAlign: 'center' }}>
+                            <input type="checkbox" checked={sig.is_alarm}
+                              onChange={e => onUpdate(sig.id, { is_alarm: e.target.checked, alarm_class: e.target.checked ? (sig.alarm_class ?? 1) : null })}
+                              style={{ cursor: 'pointer' }} />
+                          </td>
+                          <td style={{ ...cell, minWidth: '60px' }}>
+                            {sig.is_alarm && (
+                              <select value={sig.alarm_class?.toString() ?? '1'}
+                                onChange={e => onUpdate(sig.id, { alarm_class: Number(e.target.value) as 1|2|3 })} style={eSelect}>
+                                {[['1','F1'],['2','F2'],['3','F3']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                              </select>
+                            )}
+                          </td>
+                        </>
+                      );
+                    }
+
+                    const alarmRows = ORDER.map(k => {
+                      const stEntry = st.states[k];
+                      if (!stEntry) return null;
+                      const cfg = map[k] ?? { is_alarm: false, is_event: false, alarm_class: null };
+                      return { k, cfg };
+                    }).filter(Boolean);
+
+                    return (
+                      <>
+                        <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px' }}>
+                          {alarmRows.map(row => {
+                            if (!row) return null;
+                            const { k, cfg } = row;
+                            return (
+                              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', height: '18px' }}>
+                                <span style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '10px', minWidth: '22px' }}>{k}</span>
+                                <input type="checkbox" checked={cfg.is_alarm}
+                                  onChange={e => updateStateMap(k as '00'|'01'|'10'|'11', e.target.checked)}
+                                  style={{ cursor: 'pointer', accentColor: 'var(--danger)' }} />
+                              </div>
+                            );
+                          })}
+                        </td>
+                        <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px', minWidth: '55px' }}>
+                          {alarmRows.map(row => {
+                            if (!row) return null;
+                            const { k, cfg } = row;
+                            return (
+                              <div key={k} style={{ height: '18px', marginBottom: '2px', display: 'flex', alignItems: 'center' }}>
+                                {cfg.is_alarm ? (
+                                  <select value={cfg.alarm_class?.toString() ?? '1'}
+                                    onChange={e => updateAlarmClass(k as '00'|'01'|'10'|'11', Number(e.target.value) as AlarmClass)}
+                                    style={{ ...eSelect, width: '44px', padding: '1px 2px', fontSize: '10px' }}>
+                                    {[['1','F1'],['2','F2'],['3','F3']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                                  </select>
+                                ) : <span style={{ color: 'var(--muted)', fontSize: '10px' }}>—</span>}
+                              </div>
+                            );
+                          })}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td style={{ ...cell, minWidth: '100px' }}>
                     <select value={sig.source_type} onChange={e => onUpdate(sig.id, { source_type: e.target.value as SourceType })} style={eSelect}>
                       {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

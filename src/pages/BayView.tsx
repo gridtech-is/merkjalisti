@@ -143,19 +143,23 @@ export function BayView() {
         })),
       };
       bayToSave = { ...current, bay: clearedBay };
-      setBayFile(bayToSave);
-      appendChange(api, projectId, {
-        user: userName, phase: 'DESIGN', type: 'PHASE_CHANGED',
-        target_id: current.bay.id, target_type: 'bay',
-        field: null, old_value: 'LOCKED', new_value: 'DRAFT',
-        comment: `Reitur opnaður aftur eftir læsingu: ${current.bay.display_id}`,
-      });
+      // Don't call setBayFile here — wait until after successful save
     }
 
     const updated = await saveBay(api, projectId, bayToSave, bayToSave.bay.status);
     setBayFile(updated);
     setIsDirty(false);
     setLastSaved(new Date());
+
+    // Log LOCKED→DRAFT transition only after successful save
+    if (current.bay.status === 'LOCKED') {
+      await appendChange(api, projectId, {
+        user: userName, phase: 'DESIGN', type: 'PHASE_CHANGED',
+        target_id: current.bay.id, target_type: 'bay',
+        field: null, old_value: 'LOCKED', new_value: 'DRAFT',
+        comment: `Reitur opnaður aftur eftir læsingu: ${current.bay.display_id}`,
+      });
+    }
   };
 
   useAutoCommit(isDirty, commitChanges);
@@ -174,11 +178,12 @@ export function BayView() {
   };
 
   const handleSendForReview = async () => {
-    if (!bayFile || !projectId) return;
-    if (!confirm(`Senda "${bayFile.bay.display_id}" í yfirferð? Reiturinn verður læstur þar til yfirferð lýkur.`)) return;
+    const current = bayFileRef.current;
+    if (!current || !projectId) return;
+    if (!confirm(`Senda "${current.bay.display_id}" í yfirferð? Reiturinn verður læstur þar til yfirferð lýkur.`)) return;
     setReviewSending(true);
     try {
-      const updated = await sendBayForReview(api, projectId, bayFile, userName);
+      const updated = await sendBayForReview(api, projectId, current, userName);
       setBayFile(updated);
       setIsDirty(false);
     } catch {
@@ -189,11 +194,12 @@ export function BayView() {
   };
 
   const handleApprove = async () => {
-    if (!bayFile || !projectId) return;
-    const comment = prompt('Athugasemd (valkvæmt):') ?? null;
+    const current = bayFileRef.current;
+    if (!current || !projectId) return;
     setReviewSending(true);
     try {
-      const updated = await approveBay(api, projectId, bayFile, userName, comment);
+      const comment = prompt('Athugasemd (valkvæmt):') ?? null;
+      const updated = await approveBay(api, projectId, current, userName, comment);
       setBayFile(updated);
     } catch {
       alert('Villa við samþykki. Reyndu aftur.');
@@ -203,12 +209,13 @@ export function BayView() {
   };
 
   const handleReject = async () => {
-    if (!bayFile || !projectId) return;
-    const comment = prompt('Ástæða hafnunar (nauðsynlegt):');
-    if (!comment?.trim()) return;
+    const current = bayFileRef.current;
+    if (!current || !projectId) return;
     setReviewSending(true);
     try {
-      const updated = await rejectBay(api, projectId, bayFile, userName, comment.trim());
+      const comment = prompt('Ástæða hafnunar (nauðsynlegt):');
+      if (!comment?.trim()) return;
+      const updated = await rejectBay(api, projectId, current, userName, comment.trim());
       setBayFile(updated);
     } catch {
       alert('Villa við höfnun. Reyndu aftur.');
@@ -362,8 +369,7 @@ export function BayView() {
         library={signalLibrary}
         states={signalStates}
         bayDisplayId={bay.display_id}
-        // reviewMode added in Task 3
-        {...({ reviewMode: isInReview || bay.signals.some(s => s.review_flagged) } as object)}
+        reviewMode={isInReview || bay.signals.some(s => s.review_flagged)}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
