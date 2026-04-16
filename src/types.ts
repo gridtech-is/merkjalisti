@@ -90,12 +90,19 @@ export interface BaySignal {
   name_is: string;
   name_en: string | null;
   state_id: string | null;
-  iec61850_ied: string | null;
-  iec61850_ld: string | null;
-  iec61850_ln: string | null;
-  iec61850_do_da: string | null;
-  iec61850_fc: string | null;
-  iec61850_address: string | null;
+  // IEC 61850 — per IED instance
+  iec61850_ied: string | null;         // IED name / tech key
+  iec61850_ln_prefix: string | null;   // LN prefix
+  iec61850_ln_inst: string | null;     // LN instance number
+  iec61850_rcb: string | null;         // Report Control Block
+  iec61850_dataset_entry: string | null; // Dataset entry
+  // IEC 61850 — from signal library
+  iec61850_ld: string | null;          // Logical Device
+  iec61850_ln: string | null;          // Logical Node class
+  iec61850_do_da: string | null;       // DO & DA
+  iec61850_fc: string | null;          // Functional Constraint
+  iec61850_cdc: string | null;         // Common Data Class
+  iec61850_dataset: string | null;     // Dataset
   is_alarm: boolean;
   alarm_class: AlarmClass | null;
   source_type: SourceType;

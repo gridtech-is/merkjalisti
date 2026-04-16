@@ -64,9 +64,30 @@ export function SignalTable({ signals, onUpdate, onDelete }: Props) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
-            {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl', 'IEC 61850 address', 'Fasi', ''].map(h => (
+            {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
               <th key={h} style={headerStyle}>{h}</th>
             ))}
+            <th colSpan={5} style={{ ...headerStyle, borderLeft: '2px solid var(--accent)', color: 'var(--accent)', textAlign: 'center' }}>
+              IEC 61850 — Tilvik
+            </th>
+            <th colSpan={6} style={{ ...headerStyle, borderLeft: '2px solid var(--line)', color: 'var(--text-secondary)', textAlign: 'center' }}>
+              IEC 61850 — Úr safni
+            </th>
+            <th style={headerStyle}>Fasi</th>
+            <th style={headerStyle}></th>
+          </tr>
+          <tr>
+            {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
+              <th key={`s-${h}`} style={{ ...headerStyle, top: '33px', fontSize: '10px' }}></th>
+            ))}
+            {[['IED / Tech Key', true], ['LN Prefix', true], ['LN Inst', true], ['RCB', true], ['Dataset Entry', true]].map(([h, _]) => (
+              <th key={`iec-i-${h}`} style={{ ...headerStyle, top: '33px', fontSize: '10px', borderLeft: h === 'IED / Tech Key' ? '2px solid var(--accent)' : undefined }}>{h as string}</th>
+            ))}
+            {[['LD', false], ['LN', false], ['DO & DA', false], ['FC', false], ['CDC', false], ['Dataset', false]].map(([h, _]) => (
+              <th key={`iec-l-${h}`} style={{ ...headerStyle, top: '33px', fontSize: '10px', borderLeft: h === 'LD' ? '2px solid var(--line)' : undefined }}>{h as string}</th>
+            ))}
+            <th style={{ ...headerStyle, top: '33px', fontSize: '10px' }}></th>
+            <th style={{ ...headerStyle, top: '33px', fontSize: '10px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -157,19 +178,60 @@ export function SignalTable({ signals, onUpdate, onDelete }: Props) {
                   ))}
                 </select>
               </td>
-              <td style={{ ...cellStyle, minWidth: '220px' }}>
-                <input
-                  style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
-                  defaultValue={sig.iec61850_address ?? ''}
-                  placeholder="IED/LD/LN$FC$DO"
-                  onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
-                  onBlur={e => {
-                    e.target.style.borderColor = 'transparent';
-                    onUpdate(sig.id, { iec61850_address: e.target.value || null });
-                  }}
-                  onChange={() => {}}
-                  key={`addr-${sig.id}`}
-                />
+              {/* IEC 61850 — per instance (editable) */}
+              <td style={{ ...cellStyle, minWidth: '90px', borderLeft: '2px solid var(--accent)' }}>
+                <input style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
+                  defaultValue={sig.iec61850_ied ?? ''} key={`ied-${sig.id}`}
+                  placeholder="Q0" onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => { e.target.style.borderColor = 'transparent'; onUpdate(sig.id, { iec61850_ied: e.target.value || null }); }}
+                  onChange={() => {}} />
+              </td>
+              <td style={{ ...cellStyle, minWidth: '70px' }}>
+                <input style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
+                  defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}`}
+                  placeholder="" onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => { e.target.style.borderColor = 'transparent'; onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
+                  onChange={() => {}} />
+              </td>
+              <td style={{ ...cellStyle, minWidth: '60px' }}>
+                <input style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
+                  defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}`}
+                  placeholder="1" onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => { e.target.style.borderColor = 'transparent'; onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
+                  onChange={() => {}} />
+              </td>
+              <td style={{ ...cellStyle, minWidth: '110px' }}>
+                <input style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
+                  defaultValue={sig.iec61850_rcb ?? ''} key={`rcb-${sig.id}`}
+                  placeholder="BR$brcbProt01" onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => { e.target.style.borderColor = 'transparent'; onUpdate(sig.id, { iec61850_rcb: e.target.value || null }); }}
+                  onChange={() => {}} />
+              </td>
+              <td style={{ ...cellStyle, minWidth: '120px' }}>
+                <input style={{ ...editableInput, fontFamily: 'monospace', fontSize: '11px' }}
+                  defaultValue={sig.iec61850_dataset_entry ?? ''} key={`dse-${sig.id}`}
+                  placeholder="" onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => { e.target.style.borderColor = 'transparent'; onUpdate(sig.id, { iec61850_dataset_entry: e.target.value || null }); }}
+                  onChange={() => {}} />
+              </td>
+              {/* IEC 61850 — from library (display only) */}
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', borderLeft: '2px solid var(--line)' }}>
+                {sig.iec61850_ld ?? '—'}
+              </td>
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>
+                {sig.iec61850_ln ?? '—'}
+              </td>
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', minWidth: '100px' }}>
+                {sig.iec61850_do_da ?? '—'}
+              </td>
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>
+                {sig.iec61850_fc ?? '—'}
+              </td>
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>
+                {sig.iec61850_cdc ?? '—'}
+              </td>
+              <td style={{ ...cellStyle, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>
+                {sig.iec61850_dataset ?? '—'}
               </td>
               <td style={{ ...cellStyle, fontSize: '10px', color: 'var(--muted)' }}>
                 {sig.phase_added}
