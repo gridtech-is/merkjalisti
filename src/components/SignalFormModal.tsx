@@ -117,7 +117,9 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
             onChange={setEquipmentCode}
             options={equipment.map(e => ({
               value: e.code,
-              label: `${e.code} — ${e.type}${e.description ? `: ${e.description}` : ''}`,
+              label: e.category === 'ied'
+                ? `${e.code} — IED${e.model ? ` ${e.model}` : ''}${e.ied_name ? ` (${e.ied_name})` : ''}`
+                : `${e.code} — ${e.type ?? ''}${e.description ? `: ${e.description}` : ''}`,
             }))}
             required
           />

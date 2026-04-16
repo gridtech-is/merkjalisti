@@ -136,38 +136,37 @@ export function BayView() {
       {/* Equipment assignment */}
       {allEquipment.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: 'var(--space-2)', color: 'var(--text-secondary)' }}>
-            Tæki í reit
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {allEquipment.map(eq => {
-              const checked = bay.equipment_ids.includes(eq.id);
-              return (
-                <label
-                  key={eq.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '5px 10px',
-                    background: checked ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)',
-                    border: `1px solid ${checked ? 'var(--accent)' : 'var(--line)'}`,
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer', fontSize: '12px',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleEquipment(eq.id)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{eq.code}</span>
-                  <span style={{ color: 'var(--muted)' }}>{eq.type}</span>
-                </label>
-              );
-            })}
-          </div>
-          {allEquipment.length > 0 && bayEquipment.length === 0 && (
-            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: 'var(--space-2)' }}>
+          {(['apparatus', 'ied'] as const).map(cat => {
+            const group = allEquipment.filter(e => cat === 'ied' ? e.category === 'ied' : (e.category === 'apparatus' || !e.category));
+            if (group.length === 0) return null;
+            return (
+              <div key={cat} style={{ marginBottom: 'var(--space-3)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {cat === 'apparatus' ? 'Búnaður' : 'IED'}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  {group.map(eq => {
+                    const checked = bay.equipment_ids.includes(eq.id);
+                    return (
+                      <label key={eq.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '5px 10px',
+                        background: checked ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)',
+                        border: `1px solid ${checked ? 'var(--accent)' : 'var(--line)'}`,
+                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '12px',
+                      }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleEquipment(eq.id)} style={{ cursor: 'pointer' }} />
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{eq.code}</span>
+                        <span style={{ color: 'var(--muted)' }}>{cat === 'ied' ? (eq.model ?? eq.ied_name ?? 'IED') : (eq.type ?? '')}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {bayEquipment.length === 0 && (
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: 'var(--space-1)' }}>
               Ekkert tæki valið — veldu tæki til að nota í merki picker
             </div>
           )}

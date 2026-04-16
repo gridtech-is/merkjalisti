@@ -64,21 +64,42 @@ export interface Project {
 
 // ─── Equipment ─────────────────────────────────────────────────────────────
 
-export type EquipmentType =
+export type EquipmentCategory = 'apparatus' | 'ied';
+
+export type ApparatusType =
   | 'Aflrofi'
   | 'Skilrofi'
   | 'Jarðrofi'
   | 'Spennir'
-  | 'Vörn'
   | 'Stjórnbúnaður'
   | 'Annað';
 
+/** @deprecated use ApparatusType */
+export type EquipmentType = ApparatusType;
+
 export interface Equipment {
   id: string;
-  type: EquipmentType;
-  code: string;
-  ied_names: string[];
+  category: EquipmentCategory;  // 'apparatus' | 'ied'
+  code: string;                  // Tech key, e.g. "QA1" or "Q0IED"
+  // Apparatus fields
+  type: ApparatusType | null;
+  // IED fields
+  ied_name: string | null;       // IEC 61850 IED name
+  manufacturer: string | null;
+  model: string | null;
+  template_id: string | null;
+  // Common
   description: string;
+}
+
+export interface EquipmentTemplate {
+  id: string;
+  name: string;                  // Display name, e.g. "Siemens 7SA87"
+  category: EquipmentCategory;
+  apparatus_type?: ApparatusType;
+  manufacturer?: string;
+  model?: string;
+  description?: string;
 }
 
 // ─── Bay signal ────────────────────────────────────────────────────────────
