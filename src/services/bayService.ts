@@ -162,7 +162,7 @@ export async function sendBayForReview(
   const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
   const msg = `[REVIEW] Sent í yfirferð: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, updated, bayFile.sha, msg);
-  appendChange(api, projectId, {
+  await appendChange(api, projectId, {
     user: sentBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
     target_id: bayFile.bay.id, target_type: 'bay',
     field: null, old_value: 'DRAFT', new_value: 'IN_REVIEW',
@@ -183,7 +183,8 @@ export async function approveBay(
     ...bayFile.bay,
     status: 'LOCKED',
     review: {
-      ...(bayFile.bay.review ?? { sent_by: reviewedBy, sent_at: now }),
+      sent_by: bayFile.bay.review?.sent_by ?? reviewedBy,
+      sent_at: bayFile.bay.review?.sent_at ?? now,
       reviewed_by: reviewedBy,
       reviewed_at: now,
       status: 'APPROVED',
@@ -193,7 +194,7 @@ export async function approveBay(
   const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
   const msg = `[REVIEW] Samþykkt: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, updated, bayFile.sha, msg);
-  appendChange(api, projectId, {
+  await appendChange(api, projectId, {
     user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
     target_id: bayFile.bay.id, target_type: 'bay',
     field: null, old_value: 'IN_REVIEW', new_value: 'LOCKED',
@@ -214,7 +215,8 @@ export async function rejectBay(
     ...bayFile.bay,
     status: 'DRAFT',
     review: {
-      ...(bayFile.bay.review ?? { sent_by: reviewedBy, sent_at: now }),
+      sent_by: bayFile.bay.review?.sent_by ?? reviewedBy,
+      sent_at: bayFile.bay.review?.sent_at ?? now,
       reviewed_by: reviewedBy,
       reviewed_at: now,
       status: 'REJECTED',
@@ -224,7 +226,7 @@ export async function rejectBay(
   const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
   const msg = `[REVIEW] Hafnað: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, updated, bayFile.sha, msg);
-  appendChange(api, projectId, {
+  await appendChange(api, projectId, {
     user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
     target_id: bayFile.bay.id, target_type: 'bay',
     field: null, old_value: 'IN_REVIEW', new_value: 'DRAFT',
