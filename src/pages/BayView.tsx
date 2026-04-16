@@ -6,20 +6,27 @@ import { loadBay, saveBay, type BayFile } from '../services/bayService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
+import { TestingPanel } from '../components/TestingPanel';
 import { SignalPickerModal } from '../components/SignalFormModal';
-import type { BaySignal, Equipment } from '../types';
+import { ImportSignalsModal } from '../components/ImportSignalsModal';
+import { generateSignalTemplate } from '../services/signalTemplate';
+import type { BaySignal, Equipment, SignalLibraryEntry, SignalState } from '../types';
 
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
-  const { api } = useApi();
+  const { api, userName } = useApi();
   const navigate = useNavigate();
   const [bayFile, setBayFile] = useState<BayFile | null>(null);
   const [allEquipment, setAllEquipment] = useState<Equipment[]>([]);
   const [equipmentSha, setEquipmentSha] = useState('');
+  const [signalLibrary, setSignalLibrary] = useState<SignalLibraryEntry[]>([]);
+  const [signalStates, setSignalStates] = useState<SignalState[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [testPhase, setTestPhase] = useState<'FAT' | 'SAT' | null>(null);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -33,10 +40,14 @@ export function BayView() {
     Promise.all([
       loadBay(api, projectId, bayId),
       api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
-    ]).then(([f, { data: eq, sha: eqSha }]) => {
+      api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
+      api.readJson<SignalState[]>('data/signal_states.json'),
+    ]).then(([f, { data: eq, sha: eqSha }, { data: lib }, { data: states }]) => {
       setBayFile(f);
       setAllEquipment(eq);
       setEquipmentSha(eqSha);
+      setSignalLibrary(lib);
+      setSignalStates(states);
     }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
 
@@ -128,8 +139,11 @@ export function BayView() {
               ✓ Vistað {lastSaved.toLocaleTimeString('is-IS')}
             </span>
           )}
+          <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
           <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
           <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
+          <Button size="sm" variant="ghost" onClick={() => setTestPhase('FAT')}>FAT</Button>
+          <Button size="sm" variant="ghost" onClick={() => setTestPhase('SAT')}>SAT</Button>
         </div>
       </div>
 
@@ -189,6 +203,9 @@ export function BayView() {
       <SignalTable
         signals={bay.signals}
         equipment={allEquipment}
+        library={signalLibrary}
+        states={signalStates}
+        bayDisplayId={bay.display_id}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
@@ -199,6 +216,30 @@ export function BayView() {
           equipment={bayEquipment}
           onAdd={handleAdd}
           onClose={() => setShowPicker(false)}
+        />
+      )}
+
+      {showImport && (
+        <ImportSignalsModal
+          phase="DESIGN"
+          library={signalLibrary}
+          onAdd={(signals) => { handleAdd(signals); setShowImport(false); }}
+          onClose={() => setShowImport(false)}
+          onDownloadTemplate={() =>
+            generateSignalTemplate(() =>
+              api.readJson<SignalLibraryEntry[]>('data/signal_library.json').then(r => r.data)
+            )
+          }
+        />
+      )}
+
+      {testPhase && (
+        <TestingPanel
+          signals={bay.signals}
+          phase={testPhase}
+          userName={userName}
+          onUpdate={handleUpdate}
+          onClose={() => setTestPhase(null)}
         />
       )}
     </div>
