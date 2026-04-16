@@ -198,7 +198,9 @@ export function BayView() {
     if (!current || !projectId) return;
     setReviewSending(true);
     try {
-      const comment = prompt('Athugasemd (valkvæmt):') ?? null;
+      const raw = prompt('Athugasemd (valkvæmt):');
+      if (raw === null) return;
+      const comment = raw.trim() || null;
       const updated = await approveBay(api, projectId, current, userName, comment);
       setBayFile(updated);
     } catch {
