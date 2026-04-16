@@ -176,6 +176,8 @@ export function SignalsView() {
     phase_added: 'DESIGN',
     fat_tested: false, fat_tested_by: null, fat_tested_at: null, fat_result: null,
     sat_tested: false, sat_tested_by: null, sat_tested_at: null, sat_result: null,
+    review_flagged: false,
+    review_comment: null,
   });
 
   // Cascade changes from a library entry to all bay signals that reference it

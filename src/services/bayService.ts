@@ -1,6 +1,7 @@
 // src/services/bayService.ts
 import type { GitHubApi } from '../github/api';
 import type { Bay, BaySignal, BayTemplate } from '../types';
+import { appendChange } from './changelogService';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -21,7 +22,7 @@ export async function createBay(
   voltageLevel: string,
   bayName: string,
   signals: BaySignal[],
-  createdBy: string
+  _createdBy: string
 ): Promise<BayFile> {
   const id = uuid();
   const bay: Bay = {
@@ -31,7 +32,13 @@ export async function createBay(
     bay_name: bayName,
     display_id: `${station}${bayName}`,
     equipment_ids: [],
-    signals,
+    signals: signals.map(s => ({
+      ...s,
+      review_flagged: s.review_flagged ?? false,
+      review_comment: s.review_comment ?? null,
+    })),
+    status: 'DRAFT',
+    review: null,
   };
   const path = `projects/${projectId}/bays/${id}.json`;
   const msg = `[DESIGN] Nýr reitur: ${bay.display_id}`;
@@ -44,7 +51,7 @@ export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]
   try {
     entries = await api.listDirectory(`projects/${projectId}/bays`);
   } catch {
-    return []; // bays/ directory doesn't exist yet
+    return [];
   }
   const jsonFiles = entries.filter(e => e.endsWith('.json'));
   const results = await Promise.allSettled(
@@ -52,13 +59,35 @@ export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]
   );
   return results
     .filter((r): r is PromiseFulfilledResult<{ data: Bay; sha: string }> => r.status === 'fulfilled')
-    .map(r => r.value.data);
+    .map(r => {
+      const data = r.value.data;
+      return {
+        ...data,
+        status: data.status ?? ('DRAFT' as const),
+        review: data.review ?? null,
+        signals: data.signals.map(s => ({
+          ...s,
+          review_flagged: s.review_flagged ?? false,
+          review_comment: s.review_comment ?? null,
+        })),
+      };
+    });
 }
 
 export async function loadBay(api: GitHubApi, projectId: string, bayId: string): Promise<BayFile> {
   const path = `projects/${projectId}/bays/${bayId}.json`;
   const { data, sha } = await api.readJson<Bay>(path);
-  return { bay: data, sha };
+  const bay: Bay = {
+    ...data,
+    status: data.status ?? 'DRAFT',
+    review: data.review ?? null,
+    signals: data.signals.map(s => ({
+      ...s,
+      review_flagged: s.review_flagged ?? false,
+      review_comment: s.review_comment ?? null,
+    })),
+  };
+  return { bay, sha };
 }
 
 export async function saveBayTemplate(
@@ -109,4 +138,97 @@ export async function saveBay(
   const msg = `[${phase}] Vista reit: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, bayFile.bay, bayFile.sha, msg);
   return { ...bayFile, sha };
+}
+
+export async function sendBayForReview(
+  api: GitHubApi,
+  projectId: string,
+  bayFile: BayFile,
+  sentBy: string
+): Promise<BayFile> {
+  const now = new Date().toISOString();
+  const updated: Bay = {
+    ...bayFile.bay,
+    status: 'IN_REVIEW',
+    review: {
+      sent_by: sentBy,
+      sent_at: now,
+      reviewed_by: null,
+      reviewed_at: null,
+      status: 'OPEN',
+      comment: null,
+    },
+  };
+  const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
+  const msg = `[REVIEW] Sent í yfirferð: ${bayFile.bay.display_id}`;
+  const sha = await api.writeJson(path, updated, bayFile.sha, msg);
+  appendChange(api, projectId, {
+    user: sentBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
+    target_id: bayFile.bay.id, target_type: 'bay',
+    field: null, old_value: 'DRAFT', new_value: 'IN_REVIEW',
+    comment: `Reitur sendur í yfirferð: ${bayFile.bay.display_id}`,
+  });
+  return { bay: updated, sha };
+}
+
+export async function approveBay(
+  api: GitHubApi,
+  projectId: string,
+  bayFile: BayFile,
+  reviewedBy: string,
+  comment: string | null
+): Promise<BayFile> {
+  const now = new Date().toISOString();
+  const updated: Bay = {
+    ...bayFile.bay,
+    status: 'LOCKED',
+    review: {
+      ...(bayFile.bay.review ?? { sent_by: reviewedBy, sent_at: now }),
+      reviewed_by: reviewedBy,
+      reviewed_at: now,
+      status: 'APPROVED',
+      comment,
+    },
+  };
+  const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
+  const msg = `[REVIEW] Samþykkt: ${bayFile.bay.display_id}`;
+  const sha = await api.writeJson(path, updated, bayFile.sha, msg);
+  appendChange(api, projectId, {
+    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
+    target_id: bayFile.bay.id, target_type: 'bay',
+    field: null, old_value: 'IN_REVIEW', new_value: 'LOCKED',
+    comment: `Reitur samþykktur: ${bayFile.bay.display_id}`,
+  });
+  return { bay: updated, sha };
+}
+
+export async function rejectBay(
+  api: GitHubApi,
+  projectId: string,
+  bayFile: BayFile,
+  reviewedBy: string,
+  comment: string
+): Promise<BayFile> {
+  const now = new Date().toISOString();
+  const updated: Bay = {
+    ...bayFile.bay,
+    status: 'DRAFT',
+    review: {
+      ...(bayFile.bay.review ?? { sent_by: reviewedBy, sent_at: now }),
+      reviewed_by: reviewedBy,
+      reviewed_at: now,
+      status: 'REJECTED',
+      comment,
+    },
+  };
+  const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
+  const msg = `[REVIEW] Hafnað: ${bayFile.bay.display_id}`;
+  const sha = await api.writeJson(path, updated, bayFile.sha, msg);
+  appendChange(api, projectId, {
+    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
+    target_id: bayFile.bay.id, target_type: 'bay',
+    field: null, old_value: 'IN_REVIEW', new_value: 'DRAFT',
+    comment: `Reitur hafnaður: ${bayFile.bay.display_id}. ${comment}`,
+  });
+  return { bay: updated, sha };
 }

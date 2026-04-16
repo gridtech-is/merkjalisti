@@ -92,6 +92,8 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
         sat_tested_by: null,
         sat_tested_at: null,
         sat_result: null,
+        review_flagged: false,
+        review_comment: null,
       }));
     onAdd(signals);
   };

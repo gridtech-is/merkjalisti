@@ -102,6 +102,8 @@ function parseRow(raw: Record<string, unknown>, phase: ProjectPhase, libraryInde
     phase_added: phase,
     fat_tested: false, fat_tested_by: null, fat_tested_at: null, fat_result: null,
     sat_tested: false, sat_tested_by: null, sat_tested_at: null, sat_result: null,
+    review_flagged: false,
+    review_comment: null,
   };
 
   return { data, warnings };

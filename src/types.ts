@@ -149,6 +149,21 @@ export interface BaySignal {
   sat_tested_by: string | null;
   sat_tested_at: string | null;
   sat_result: TestResult | null;
+  review_flagged: boolean;
+  review_comment: string | null;
+}
+
+// ─── Bay review ────────────────────────────────────────────────────────────
+
+export type BayStatus = 'DRAFT' | 'IN_REVIEW' | 'LOCKED';
+
+export interface BayReview {
+  sent_by: string;
+  sent_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: 'OPEN' | 'APPROVED' | 'REJECTED';
+  comment: string | null;
 }
 
 // ─── Bay ───────────────────────────────────────────────────────────────────
@@ -161,6 +176,8 @@ export interface Bay {
   display_id: string;
   equipment_ids: string[];
   signals: BaySignal[];
+  status: BayStatus;
+  review: BayReview | null;
 }
 
 // ─── Changelog ─────────────────────────────────────────────────────────────
