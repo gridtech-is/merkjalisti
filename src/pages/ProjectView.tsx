@@ -1,11 +1,12 @@
 // src/pages/ProjectView.tsx
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { loadProject } from '../services/projectService';
+import { loadProject, saveProjectPhase } from '../services/projectService';
 import { listBays } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
-import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, EquipmentCategory } from '../types';
+import { ImportScdModal } from '../components/ImportScdModal';
+import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase } from '../types';
 
 type Tab = 'bays' | 'equipment' | 'station' | 'overview';
 type EqTab = 'apparatus' | 'ied';
@@ -20,6 +21,43 @@ function uuid(): string {
 const APPARATUS_TYPES: ApparatusType[] = [
   'Aflrofi', 'Skilrofi', 'Jarðrofi', 'Spennir', 'Stjórnbúnaður', 'Annað',
 ];
+
+const PHASE_ORDER: ProjectPhase[] = ['DESIGN', 'FROZEN', 'REVIEW', 'FAT', 'SAT'];
+const PHASE_LABELS: Record<ProjectPhase, string> = {
+  DESIGN: 'Hönnun', FROZEN: 'Læst', REVIEW: 'Yfirferð', FAT: 'FAT', SAT: 'SAT',
+};
+const PHASE_COLORS: Record<ProjectPhase, string> = {
+  DESIGN: 'var(--accent)', FROZEN: 'var(--text-secondary)',
+  REVIEW: 'var(--warn)', FAT: '#8b5cf6', SAT: 'var(--success)',
+};
+
+function PhaseBar({ phase, onAdvance }: { phase: ProjectPhase; onAdvance: () => void }) {
+  const idx = PHASE_ORDER.indexOf(phase);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+      {PHASE_ORDER.map((p, i) => (
+        <React.Fragment key={p}>
+          <div style={{
+            padding: '4px 12px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: i === idx ? 700 : 400,
+            background: i === idx ? PHASE_COLORS[p] : 'var(--surface-alt)',
+            color: i === idx ? '#fff' : i < idx ? PHASE_COLORS[p] : 'var(--muted)',
+            border: `1px solid ${i <= idx ? PHASE_COLORS[p] : 'var(--line)'}`,
+          }}>
+            {i < idx ? '✓ ' : ''}{PHASE_LABELS[p]}
+          </div>
+          {i < PHASE_ORDER.length - 1 && (
+            <span style={{ color: 'var(--muted)', fontSize: '12px' }}>→</span>
+          )}
+        </React.Fragment>
+      ))}
+      {idx < PHASE_ORDER.length - 1 && (
+        <Button size="sm" onClick={onAdvance} style={{ marginLeft: 'var(--space-2)' }}>
+          Fara í {PHASE_LABELS[PHASE_ORDER[idx + 1]]} →
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function emptyApparatus(code: string, type: ApparatusType, desc: string): Equipment {
   return { id: uuid(), category: 'apparatus', code, type, ied_name: null, manufacturer: null, model: null, template_id: null, description: desc };
@@ -48,9 +86,11 @@ export function ProjectView() {
   const [bays, setBays] = useState<Bay[]>([]);
   const [tab, setTab] = useState<Tab>('bays');
   const [eqTab, setEqTab] = useState<EqTab>('apparatus');
+  const [showScd, setShowScd] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [projectSha, setProjectSha] = useState('');
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -71,6 +111,7 @@ export function ProjectView() {
       api.readJson<EquipmentTemplate[]>('data/equipment_templates.json').catch(() => ({ data: [], sha: '' })),
     ]).then(([files, bayList, { data: tmplData }]) => {
       setProject(files.project);
+      setProjectSha(files.projectSha);
       setEquipment(files.equipment);
       setEquipmentSha(files.equipmentSha);
       setBays(bayList);
@@ -194,6 +235,19 @@ export function ProjectView() {
         <Badge phase={project.phase}>{project.phase}</Badge>
       </div>
 
+      <PhaseBar
+        phase={project.phase}
+        onAdvance={async () => {
+          const idx = PHASE_ORDER.indexOf(project.phase);
+          if (idx >= PHASE_ORDER.length - 1) return;
+          const next = PHASE_ORDER[idx + 1];
+          if (!confirm(`Fara úr ${project.phase} í ${next}?`)) return;
+          const { project: updated, sha } = await saveProjectPhase(api, projectId!, project, projectSha, next);
+          setProject(updated);
+          setProjectSha(sha);
+        }}
+      />
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 'var(--space-1)', borderBottom: '1px solid var(--line)', marginBottom: 'var(--space-6)' }}>
         {TABS.map(t => (
@@ -314,6 +368,10 @@ export function ProjectView() {
 
           {/* IED */}
           {eqTab === 'ied' && (
+            <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
+              <Button variant="ghost" size="sm" onClick={() => setShowScd(true)}>↑ Innflytja SCD skrá</Button>
+            </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -405,8 +463,23 @@ export function ProjectView() {
                 </tr>
               </tbody>
             </table>
+            </>
           )}
         </div>
+      )}
+
+      {showScd && (
+        <ImportScdModal
+          onAddEquipment={async (items) => {
+            setSaving(true);
+            try {
+              await saveEquipment([...equipment, ...items]);
+              setShowScd(false);
+              setEqTab('ied');
+            } finally { setSaving(false); }
+          }}
+          onClose={() => setShowScd(false)}
+        />
       )}
 
       {tab === 'station' && (

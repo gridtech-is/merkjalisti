@@ -1,7 +1,7 @@
 // src/services/projectService.ts
 import type { GitHubApi } from '../github/api';
 import type {
-  Project, Equipment, BaySignal, ChangeEntry, Testing
+  Project, Equipment, BaySignal, ChangeEntry, Testing, ProjectPhase
 } from '../types';
 
 export interface ProjectFiles {
@@ -123,4 +123,17 @@ export async function saveProject(
     projectSha: ps, equipmentSha: es,
     stationSignalsSha: ss, changelogSha: cs, testingSha: ts,
   };
+}
+
+export async function saveProjectPhase(
+  api: GitHubApi,
+  projectId: string,
+  project: Project,
+  sha: string,
+  newPhase: ProjectPhase
+): Promise<{ project: Project; sha: string }> {
+  const updated: Project = { ...project, phase: newPhase };
+  const msg = `[${newPhase}] Fasi uppfærður: ${project.phase} → ${newPhase}`;
+  const newSha = await api.writeJson(`projects/${projectId}/project.json`, updated, sha, msg);
+  return { project: updated, sha: newSha };
 }
