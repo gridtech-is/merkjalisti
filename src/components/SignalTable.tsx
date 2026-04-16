@@ -64,13 +64,16 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode: _reviewMode = false, onUpdate, onDelete }: Props) {
+export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, onUpdate, onDelete }: Props) {
   // Build lookup index: code → library entry
   const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
   // Build state index: id → SignalState
   const stateIndex = new Map(states.map(s => [s.id, s]));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
+  const [flaggingId, setFlaggingId] = useState<string | null>(null);
+  const [flagComment, setFlagComment] = useState('');
+  const [popupId, setPopupId] = useState<string | null>(null);
   // Block edit state
   const [blockIed, setBlockIed] = useState('');
   const [blockPrefix, setBlockPrefix] = useState('');
@@ -215,6 +218,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 IEC 61850 — Úr safni
               </th>
               <th style={head}>Fasi</th>
+              {reviewMode && <th style={head}></th>}
               <th style={head}></th>
             </tr>
             <tr>
@@ -235,6 +239,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 <th key={`il-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
               ))}
               <th style={{ ...head, top: '33px' }}></th>
+              {reviewMode && <th style={{ ...head, top: '33px' }}></th>}
               <th style={{ ...head, top: '33px' }}></th>
             </tr>
           </thead>
@@ -242,7 +247,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             {signals.map((sig, i) => {
               const isSelected = selected.has(sig.id);
               return (
-                <tr key={sig.id} style={{ background: isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                <tr key={sig.id} style={{ background: sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
                   <td style={{ ...cell, width: '32px', textAlign: 'center' }}>
                     <input type="checkbox" checked={isSelected} onChange={() => toggle(sig.id)} style={{ cursor: 'pointer' }} />
                   </td>
@@ -482,6 +487,80 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_cdc ?? '—'}</td>
                   <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_dataset ?? '—'}</td>
                   <td style={{ ...cell, fontSize: '10px', color: 'var(--muted)' }}>{sig.phase_added}</td>
+                  {reviewMode && (
+                    <td style={{ ...cell, width: '80px', position: 'relative' }}>
+                      {sig.review_flagged ? (
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            onClick={() => setPopupId(popupId === sig.id ? null : sig.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }}
+                            title={sig.review_comment ?? ''}
+                          >
+                            💬
+                          </button>
+                          {popupId === sig.id && (
+                            <div style={{
+                              position: 'absolute', right: 0, top: '100%', zIndex: 10,
+                              background: 'var(--surface)', border: '1px solid var(--line)',
+                              borderRadius: 'var(--radius)', padding: 'var(--space-3)',
+                              minWidth: '200px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                              fontSize: '12px',
+                            }}>
+                              <div style={{ color: 'var(--text)', marginBottom: 'var(--space-2)' }}>{sig.review_comment}</div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onUpdate(sig.id, { review_flagged: false, review_comment: null });
+                                  setPopupId(null);
+                                }}
+                                style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px 8px', cursor: 'pointer' }}
+                              >
+                                Hreinsa
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : flaggingId === sig.id ? (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <input
+                            autoFocus
+                            value={flagComment}
+                            onChange={e => setFlagComment(e.target.value)}
+                            placeholder="Athugasemd..."
+                            style={{ ...eInput, border: '1px solid var(--accent)', width: '120px' }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && flagComment.trim()) {
+                                onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
+                                setFlaggingId(null);
+                                setFlagComment('');
+                              }
+                              if (e.key === 'Escape') { setFlaggingId(null); setFlagComment(''); }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (flagComment.trim()) {
+                                onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
+                              }
+                              setFlaggingId(null);
+                              setFlagComment('');
+                            }}
+                            style={{ fontSize: '11px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '2px 6px', cursor: 'pointer' }}
+                          >✓</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setFlaggingId(sig.id); setFlagComment(''); }}
+                          style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px 6px', cursor: 'pointer' }}
+                        >
+                          💬
+                        </button>
+                      )}
+                    </td>
+                  )}
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                     <Button variant="danger" size="sm" onClick={() => onDelete(sig.id)}>Eyða</Button>
                   </td>
