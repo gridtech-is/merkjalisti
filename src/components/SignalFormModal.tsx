@@ -1,8 +1,8 @@
 // src/components/SignalFormModal.tsx
 import { useEffect, useState } from 'react';
-import { Modal, Input, Button } from './ui';
+import { Modal, Input, Select, Button } from './ui';
 import { useApi } from '../context/ApiContext';
-import type { BaySignal, SignalLibraryEntry, ProjectPhase } from '../types';
+import type { BaySignal, SignalLibraryEntry, ProjectPhase, Equipment } from '../types';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -13,17 +13,23 @@ function uuid(): string {
 
 interface Props {
   phase: ProjectPhase;
+  equipment: Equipment[];
   onAdd: (signals: BaySignal[]) => void;
   onClose: () => void;
 }
 
-export function SignalPickerModal({ phase, onAdd, onClose }: Props) {
+export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
   const { api } = useApi();
   const [library, setLibrary] = useState<SignalLibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [equipmentCode, setEquipmentCode] = useState('');
+
+  // Default to Vörn equipment, otherwise first in list
+  const defaultEquipment = (
+    equipment.find(e => e.type === 'Vörn') ?? equipment[0]
+  )?.code ?? '';
+  const [equipmentCode, setEquipmentCode] = useState(defaultEquipment);
 
   useEffect(() => {
     api.readJson<SignalLibraryEntry[]>('data/signal_library.json')
@@ -51,7 +57,7 @@ export function SignalPickerModal({ phase, onAdd, onClose }: Props) {
   };
 
   const handleAdd = () => {
-    const eqCode = equipmentCode.trim().toUpperCase();
+    const eqCode = equipmentCode.trim();
     const signals: BaySignal[] = library
       .filter(e => e.code && selected.has(e.code))
       .map(e => ({
@@ -99,13 +105,26 @@ export function SignalPickerModal({ phase, onAdd, onClose }: Props) {
     <Modal title="Bæta við merkjum úr safni" onClose={onClose} width="700px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
-        <Input
-          label="Tækjakóði (gildir fyrir öll valin merki)"
-          value={equipmentCode}
-          onChange={v => setEquipmentCode(v.toUpperCase())}
-          placeholder="t.d. QA1, BCF1"
-          required
-        />
+        {equipment.length > 0 ? (
+          <Select
+            label="Tæki (gildir fyrir öll valin merki)"
+            value={equipmentCode}
+            onChange={setEquipmentCode}
+            options={equipment.map(e => ({
+              value: e.code,
+              label: `${e.code} — ${e.type}${e.description ? `: ${e.description}` : ''}`,
+            }))}
+            required
+          />
+        ) : (
+          <Input
+            label="Tækjakóði (gildir fyrir öll valin merki)"
+            value={equipmentCode}
+            onChange={v => setEquipmentCode(v.toUpperCase())}
+            placeholder="t.d. QA1, BCF1"
+            required
+          />
+        )}
 
         <Input
           label="Leita í safni"

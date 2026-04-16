@@ -7,13 +7,14 @@ import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
 import { SignalPickerModal } from '../components/SignalFormModal';
-import type { BaySignal } from '../types';
+import type { BaySignal, Equipment } from '../types';
 
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
   const { api } = useApi();
   const navigate = useNavigate();
   const [bayFile, setBayFile] = useState<BayFile | null>(null);
+  const [bayEquipment, setBayEquipment] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -23,9 +24,14 @@ export function BayView() {
 
   useEffect(() => {
     if (!projectId || !bayId) return;
-    loadBay(api, projectId, bayId)
-      .then(f => setBayFile(f))
-      .finally(() => setLoading(false));
+    Promise.all([
+      loadBay(api, projectId, bayId),
+      api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
+    ]).then(([f, { data: allEquipment }]) => {
+      setBayFile(f);
+      const ids = new Set(f.bay.equipment_ids);
+      setBayEquipment(allEquipment.filter(e => ids.has(e.id)));
+    }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
 
   const handleAdd = (signals: BaySignal[]) => {
@@ -122,6 +128,7 @@ export function BayView() {
       {showPicker && (
         <SignalPickerModal
           phase="DESIGN"
+          equipment={bayEquipment}
           onAdd={handleAdd}
           onClose={() => setShowPicker(false)}
         />
