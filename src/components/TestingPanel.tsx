@@ -1,4 +1,5 @@
 // src/components/TestingPanel.tsx
+import { useState } from 'react';
 import { Button } from './ui';
 import type { BaySignal, TestResult } from '../types';
 
@@ -21,6 +22,8 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
   const testedByField = phase === 'FAT' ? 'fat_tested_by' : 'sat_tested_by';
   const testedAtField = phase === 'FAT' ? 'fat_tested_at' : 'sat_tested_at';
 
+  const [results, setResults] = useState<Record<string, TestResult>>({});
+
   const tested = signals.filter(s => s[testedField]).length;
   const pct = signals.length > 0 ? Math.round((tested / signals.length) * 100) : 0;
 
@@ -31,24 +34,29 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
         [testedByField]: null,
         [testedAtField]: null,
       });
+      setResults(prev => { const n = { ...prev }; delete n[sig.id]; return n; });
     } else {
       onUpdate(sig.id, {
-        [testedField]: result === 'PASS' || result === 'SKIP',
+        [testedField]: true,
         [testedByField]: userName,
         [testedAtField]: new Date().toISOString(),
       });
+      setResults(prev => ({ ...prev, [sig.id]: result }));
     }
   };
 
   const markAll = () => {
     const now = new Date().toISOString();
+    const newResults: Record<string, TestResult> = {};
     signals.forEach(sig => {
       onUpdate(sig.id, {
         [testedField]: true,
         [testedByField]: userName,
         [testedAtField]: now,
       });
+      newResults[sig.id] = 'PASS';
     });
+    setResults(newResults);
   };
 
   const cell: React.CSSProperties = {
@@ -107,19 +115,22 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
                     <td style={{ ...cell }}>{sig.name_is}</td>
                     <td style={{ ...cell }}>
                       <div style={{ display: 'flex', gap: '4px' }}>
-                        {(['PASS', 'FAIL', 'SKIP'] as TestResult[]).map(r => (
-                          <button key={r} type="button"
-                            onClick={() => markSignal(sig, r)}
-                            style={{
-                              padding: '2px 8px', fontSize: '11px', fontWeight: 600,
-                              border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
-                              cursor: 'pointer',
-                              background: isTested ? RESULT_COLORS[r] : 'var(--surface-alt)',
-                              color: isTested ? '#fff' : RESULT_COLORS[r],
-                            }}>
-                            {r}
-                          </button>
-                        ))}
+                        {(['PASS', 'FAIL', 'SKIP'] as TestResult[]).map(r => {
+                          const isActive = isTested && results[sig.id] === r;
+                          return (
+                            <button key={r} type="button"
+                              onClick={() => markSignal(sig, r)}
+                              style={{
+                                padding: '2px 8px', fontSize: '11px', fontWeight: 600,
+                                border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+                                cursor: 'pointer',
+                                background: isActive ? RESULT_COLORS[r] : 'var(--surface-alt)',
+                                color: isActive ? '#fff' : RESULT_COLORS[r],
+                              }}>
+                              {r}
+                            </button>
+                          );
+                        })}
                         {isTested && (
                           <button type="button" onClick={() => markSignal(sig, null)}
                             style={{ padding: '2px 6px', fontSize: '10px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: 'transparent', color: 'var(--muted)' }}>
