@@ -10,6 +10,7 @@ import { TestingPanel } from '../components/TestingPanel';
 import { SignalPickerModal } from '../components/SignalFormModal';
 import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
+import { exportBayToExcel } from '../services/exportService';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState } from '../types';
 
 export function BayView() {
@@ -139,6 +140,7 @@ export function BayView() {
               ✓ Vistað {lastSaved.toLocaleTimeString('is-IS')}
             </span>
           )}
+          <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
           <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
           <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
           <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
