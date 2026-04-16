@@ -102,7 +102,7 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
   };
 
   const allEqCodes = equipment.map(e => e.code);
-  const iedOptions = equipment.filter(e => e.category === 'ied');
+  const iedOptions = equipment; // Tech Key dropdown shows all equipment
   const blockInputStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
     borderRadius: 'var(--radius-sm)', color: 'var(--text)',
@@ -134,10 +134,10 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
           </label>
           {/* IED */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            IED / Tech Key
+            Tech Key
             <select value={blockIed} onChange={e => setBlockIed(e.target.value)} style={{ ...blockSelectStyle, minWidth: '130px' }}>
               <option value="">— óbreytt —</option>
-              {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}{e.ied_name ? ` (${e.ied_name})` : ''}</option>)}
+              {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
             </select>
           </label>
           {/* LN Prefix */}
@@ -195,7 +195,7 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
               {['#', 'Tæki', 'Merki', 'Heiti (IS)', 'Heiti (EN)', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                 <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               ))}
-              {(['IED / Tech Key', 'LN Prefix', 'LN Inst', 'RCB', 'Dataset Entry'] as string[]).map((h, i) => (
+              {(['Tech Key', 'LN Prefix', 'LN Inst', 'RCB', 'Dataset Entry'] as string[]).map((h, i) => (
                 <th key={`ii-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--accent)' : undefined }}>{h}</th>
               ))}
               {(['LD', 'LN', 'DO & DA', 'FC', 'CDC', 'Dataset'] as string[]).map((h, i) => (
@@ -260,7 +260,7 @@ export function SignalTable({ signals, equipment, onUpdate, onDelete }: Props) {
                     {iedOptions.length > 0 ? (
                       <select value={sig.iec61850_ied ?? ''} onChange={e => onUpdate(sig.id, { iec61850_ied: e.target.value || null })} style={eSelect}>
                         <option value="">—</option>
-                        {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}{e.ied_name ? ` (${e.ied_name})` : ''}</option>)}
+                        {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
                       </select>
                     ) : (
                       <input style={eInput} defaultValue={sig.iec61850_ied ?? ''} key={`ied-${sig.id}`}
