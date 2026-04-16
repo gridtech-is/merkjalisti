@@ -5,7 +5,7 @@ import { useApi } from '../context/ApiContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
-import { listBays } from '../services/bayService';
+import { listBays, loadBay, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase } from '../types';
@@ -79,7 +79,7 @@ function emptyIED(code: string, iedName: string, tmpl: EquipmentTemplate | null,
 
 export function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { api } = useApi();
+  const { api, userName } = useApi();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -93,6 +93,7 @@ export function ProjectView() {
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [projectSha, setProjectSha] = useState('');
+  const [sendingReview, setSendingReview] = useState(false);
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -172,6 +173,41 @@ export function ProjectView() {
     try {
       await saveEquipment(equipment.filter(e => e.id !== eqId));
     } finally { setSaving(false); }
+  };
+
+  const handleSendBayForReview = async (bayId: string) => {
+    if (!projectId) return;
+    setSendingReview(true);
+    try {
+      const bayFile = await loadBay(api, projectId, bayId);
+      await sendBayForReview(api, projectId, bayFile, userName);
+      const updated = await listBays(api, projectId);
+      setBays(updated);
+    } catch {
+      alert('Villa við að senda reit í yfirferð.');
+    } finally {
+      setSendingReview(false);
+    }
+  };
+
+  const handleSendAllForReview = async () => {
+    const draftBays = bays.filter(b => b.status === 'DRAFT');
+    if (draftBays.length === 0) return;
+    if (!confirm(`Senda ${draftBays.length} reiti í yfirferð?`)) return;
+    if (!projectId) return;
+    setSendingReview(true);
+    try {
+      for (const bay of draftBays) {
+        const bayFile = await loadBay(api, projectId, bay.id);
+        await sendBayForReview(api, projectId, bayFile, userName);
+      }
+      const updated = await listBays(api, projectId);
+      setBays(updated);
+    } catch {
+      alert('Villa við að senda reiti í yfirferð.');
+    } finally {
+      setSendingReview(false);
+    }
   };
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
@@ -276,7 +312,13 @@ export function ProjectView() {
       {/* Reitir */}
       {tab === 'bays' && (
         <div>
-          <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+          <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+            {bays.length > 0 && bays.every(b => b.status === 'LOCKED') && (
+              <span style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 600 }}>✓ Allt læst</span>
+            )}
+            {bays.some(b => b.status === 'DRAFT') && (
+              <Button variant="ghost" size="sm" onClick={handleSendAllForReview} disabled={sendingReview}>→ Senda alla í yfirferð</Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => exportAllBaysToExcel(bays, project?.name ?? 'verkefni')}>↓ Excel (allt)</Button>
             <Button onClick={() => navigate(`/projects/${projectId}/bays/new`)}>+ Nýr reitur</Button>
           </div>
@@ -286,20 +328,39 @@ export function ProjectView() {
             </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {bays.map(bay => (
-                <Card key={bay.id} padding="var(--space-4) var(--space-5)" style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/projects/${projectId}/bays/${bay.id}`)}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{bay.display_id}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        {bay.signals.length} merki · {bay.equipment_ids.length} tæki
+              {bays.map(bay => {
+                const statusColor = bay.status === 'LOCKED' ? 'var(--success)' : bay.status === 'IN_REVIEW' ? 'var(--accent)' : 'var(--warn)';
+                const statusLabel = bay.status === 'LOCKED' ? 'LÆST' : bay.status === 'IN_REVIEW' ? 'Í YFIRFERÐ' : 'DRAFT';
+                return (
+                  <Card key={bay.id} padding="var(--space-4) var(--space-5)" style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/projects/${projectId}/bays/${bay.id}`)}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{bay.display_id}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                          {bay.signals.length} merki · {bay.equipment_ids.length} tæki
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={e => e.stopPropagation()}>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '2px 7px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: `color-mix(in srgb, ${statusColor} 15%, transparent)`,
+                          color: statusColor,
+                          border: `1px solid ${statusColor}`,
+                        }}>{statusLabel}</span>
+                        {bay.status === 'DRAFT' && (
+                          <Button size="sm" variant="ghost" disabled={sendingReview}
+                            onClick={() => handleSendBayForReview(bay.id)}>
+                            → Yfirferð
+                          </Button>
+                        )}
+                        <span style={{ color: 'var(--muted)', fontSize: '18px' }}>›</span>
                       </div>
                     </div>
-                    <span style={{ color: 'var(--muted)', fontSize: '18px' }}>›</span>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
