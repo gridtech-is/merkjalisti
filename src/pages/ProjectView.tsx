@@ -31,7 +31,7 @@ const PHASE_COLORS: Record<ProjectPhase, string> = {
   REVIEW: 'var(--warn)', FAT: '#8b5cf6', SAT: 'var(--success)',
 };
 
-function PhaseBar({ phase, onAdvance }: { phase: ProjectPhase; onAdvance: () => void }) {
+function PhaseBar({ phase, onAdvance, disabled }: { phase: ProjectPhase; onAdvance: () => void; disabled?: boolean }) {
   const idx = PHASE_ORDER.indexOf(phase);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
@@ -51,7 +51,7 @@ function PhaseBar({ phase, onAdvance }: { phase: ProjectPhase; onAdvance: () => 
         </React.Fragment>
       ))}
       {idx < PHASE_ORDER.length - 1 && (
-        <Button size="sm" onClick={onAdvance} style={{ marginLeft: 'var(--space-2)' }}>
+        <Button size="sm" onClick={onAdvance} disabled={disabled} style={{ marginLeft: 'var(--space-2)' }}>
           Fara í {PHASE_LABELS[PHASE_ORDER[idx + 1]]} →
         </Button>
       )}
@@ -237,14 +237,23 @@ export function ProjectView() {
 
       <PhaseBar
         phase={project.phase}
+        disabled={saving}
         onAdvance={async () => {
+          if (saving) return;
           const idx = PHASE_ORDER.indexOf(project.phase);
           if (idx >= PHASE_ORDER.length - 1) return;
           const next = PHASE_ORDER[idx + 1];
           if (!confirm(`Fara úr ${project.phase} í ${next}?`)) return;
-          const { project: updated, sha } = await saveProjectPhase(api, projectId!, project, projectSha, next);
-          setProject(updated);
-          setProjectSha(sha);
+          setSaving(true);
+          try {
+            const { project: updated, sha } = await saveProjectPhase(api, projectId!, project, projectSha, next);
+            setProject(updated);
+            setProjectSha(sha);
+          } catch {
+            alert('Villa við að vista fasa. Reyndu aftur.');
+          } finally {
+            setSaving(false);
+          }
         }}
       />
 
