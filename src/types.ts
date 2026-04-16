@@ -20,6 +20,7 @@ export type AlarmClass = 1 | 2 | 3;
 export type SourceType = 'IED' | 'HARDWIRED';
 
 export interface SignalLibraryEntry {
+  id: string;           // stable UUID — never changes
   code: string | null;
   name_is: string;
   description_is: string | null;
@@ -102,6 +103,16 @@ export interface EquipmentTemplate {
   description?: string;
 }
 
+// ─── Per-state alarm/event configuration ──────────────────────────────────
+
+export interface StateAlarmEntry {
+  is_alarm: boolean;
+  is_event: boolean;
+  alarm_class: AlarmClass | null;
+}
+
+export type StateAlarmMap = Partial<Record<'00' | '01' | '10' | '11', StateAlarmEntry>>;
+
 // ─── Bay signal ────────────────────────────────────────────────────────────
 
 export interface BaySignal {
@@ -124,16 +135,20 @@ export interface BaySignal {
   iec61850_fc: string | null;          // Functional Constraint
   iec61850_cdc: string | null;         // Common Data Class
   iec61850_dataset: string | null;     // Dataset
+  library_id: string | null;     // references SignalLibraryEntry.id
   is_alarm: boolean;
   alarm_class: AlarmClass | null;
+  state_alarm_map: StateAlarmMap | null;
   source_type: SourceType;
   phase_added: ProjectPhase;
   fat_tested: boolean;
   fat_tested_by: string | null;
   fat_tested_at: string | null;
+  fat_result: TestResult | null;
   sat_tested: boolean;
   sat_tested_by: string | null;
   sat_tested_at: string | null;
+  sat_result: TestResult | null;
 }
 
 // ─── Bay ───────────────────────────────────────────────────────────────────

@@ -1,5 +1,4 @@
 // src/components/TestingPanel.tsx
-import { useState } from 'react';
 import { Button } from './ui';
 import type { BaySignal, TestResult } from '../types';
 
@@ -21,10 +20,9 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
   const testedField = phase === 'FAT' ? 'fat_tested' : 'sat_tested';
   const testedByField = phase === 'FAT' ? 'fat_tested_by' : 'sat_tested_by';
   const testedAtField = phase === 'FAT' ? 'fat_tested_at' : 'sat_tested_at';
+  const resultField = phase === 'FAT' ? 'fat_result' : 'sat_result';
 
-  const [results, setResults] = useState<Record<string, TestResult>>({});
-
-  const tested = signals.filter(s => s[testedField]).length;
+  const tested = signals.filter(s => phase === 'FAT' ? s.fat_tested : s.sat_tested).length;
   const pct = signals.length > 0 ? Math.round((tested / signals.length) * 100) : 0;
 
   const markSignal = (sig: BaySignal, result: TestResult | null) => {
@@ -33,30 +31,28 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
         [testedField]: false,
         [testedByField]: null,
         [testedAtField]: null,
+        [resultField]: null,
       });
-      setResults(prev => { const n = { ...prev }; delete n[sig.id]; return n; });
     } else {
       onUpdate(sig.id, {
         [testedField]: true,
         [testedByField]: userName,
         [testedAtField]: new Date().toISOString(),
+        [resultField]: result,
       });
-      setResults(prev => ({ ...prev, [sig.id]: result }));
     }
   };
 
   const markAll = () => {
     const now = new Date().toISOString();
-    const newResults: Record<string, TestResult> = {};
     signals.forEach(sig => {
       onUpdate(sig.id, {
         [testedField]: true,
         [testedByField]: userName,
         [testedAtField]: now,
+        [resultField]: 'PASS',
       });
-      newResults[sig.id] = 'PASS';
     });
-    setResults(newResults);
   };
 
   const cell: React.CSSProperties = {
@@ -106,8 +102,9 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
             </thead>
             <tbody>
               {signals.map(sig => {
-                const isTested = sig[testedField] as boolean;
-                const testedBy = sig[testedByField] as string | null;
+                const isTested = phase === 'FAT' ? sig.fat_tested : sig.sat_tested;
+                const testedBy = phase === 'FAT' ? sig.fat_tested_by : sig.sat_tested_by;
+                const persistedResult = phase === 'FAT' ? sig.fat_result : sig.sat_result;
                 return (
                   <tr key={sig.id} style={{ background: isTested ? 'color-mix(in srgb, var(--success) 5%, transparent)' : 'transparent' }}>
                     <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.equipment_code}</td>
@@ -116,7 +113,7 @@ export function TestingPanel({ signals, phase, userName, onUpdate, onClose }: Pr
                     <td style={{ ...cell }}>
                       <div style={{ display: 'flex', gap: '4px' }}>
                         {(['PASS', 'FAIL', 'SKIP'] as TestResult[]).map(r => {
-                          const isActive = isTested && results[sig.id] === r;
+                          const isActive = isTested && persistedResult === r;
                           return (
                             <button key={r} type="button"
                               onClick={() => markSignal(sig, r)}

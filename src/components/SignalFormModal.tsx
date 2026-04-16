@@ -78,16 +78,20 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
         iec61850_fc: e.iec61850_fc ?? null,
         iec61850_cdc: e.iec61850_cdc ?? null,
         iec61850_dataset: e.iec61850_dataset ?? null,
+        library_id: e.id,
         is_alarm: e.is_alarm,
         alarm_class: e.alarm_class ?? null,
+        state_alarm_map: null,
         source_type: e.source_type,
         phase_added: phase,
         fat_tested: false,
         fat_tested_by: null,
         fat_tested_at: null,
+        fat_result: null,
         sat_tested: false,
         sat_tested_by: null,
         sat_tested_at: null,
+        sat_result: null,
       }));
     onAdd(signals);
   };
