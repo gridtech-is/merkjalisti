@@ -541,9 +541,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                           <button
                             type="button"
                             onClick={() => {
-                              if (flagComment.trim()) {
-                                onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
-                              }
+                              if (!flagComment.trim()) return;
+                              onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
                               setFlaggingId(null);
                               setFlagComment('');
                             }}
@@ -553,7 +552,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { setFlaggingId(sig.id); setFlagComment(''); }}
+                          onClick={() => { setFlaggingId(sig.id); setFlagComment(''); setPopupId(null); }}
                           style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px 6px', cursor: 'pointer' }}
                         >
                           💬
