@@ -5,9 +5,20 @@ import { useApi } from '../context/ApiContext';
 import { loadProject } from '../services/projectService';
 import { listBays } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
-import type { Project, Equipment, Bay } from '../types';
+import type { Project, Equipment, Bay, EquipmentType } from '../types';
 
-type Tab = 'bays' | 'station' | 'overview';
+type Tab = 'bays' | 'equipment' | 'station' | 'overview';
+
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+const EQUIPMENT_TYPES: EquipmentType[] = [
+  'Vörn', 'Aflrofi', 'Skilrofi', 'Jarðrofi', 'Spennir', 'Stjórnbúnaður', 'Annað',
+];
 
 export function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -15,10 +26,16 @@ export function ProjectView() {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [equipmentSha, setEquipmentSha] = useState('');
   const [bays, setBays] = useState<Bay[]>([]);
   const [tab, setTab] = useState<Tab>('bays');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
+  // New equipment row
+  const [newCode, setNewCode] = useState('');
+  const [newType, setNewType] = useState<EquipmentType>('Vörn');
+  const [newDesc, setNewDesc] = useState('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -28,11 +45,45 @@ export function ProjectView() {
     ]).then(([files, bayList]) => {
       setProject(files.project);
       setEquipment(files.equipment);
+      setEquipmentSha(files.equipmentSha);
       setBays(bayList);
     }).catch(() => {
       setLoadError('Gat ekki hlaðið verkefni. Það gæti verið ófullkomið eða eytt.');
     }).finally(() => setLoading(false));
   }, [api, projectId]);
+
+  const handleAddEquipment = async () => {
+    const code = newCode.trim().toUpperCase();
+    if (!code || !projectId) return;
+    const eq: Equipment = { id: uuid(), type: newType, code, ied_names: [], description: newDesc.trim() };
+    const updated = [...equipment, eq];
+    setSaving(true);
+    try {
+      const msg = `[DESIGN] Bæta við tæki: ${code}`;
+      const newSha = await api.writeJson(`projects/${projectId}/equipment.json`, updated, equipmentSha, msg);
+      setEquipment(updated);
+      setEquipmentSha(newSha);
+      setNewCode('');
+      setNewDesc('');
+      setNewType('Vörn');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteEquipment = async (eqId: string) => {
+    if (!projectId) return;
+    const updated = equipment.filter(e => e.id !== eqId);
+    setSaving(true);
+    try {
+      const msg = `[DESIGN] Eyða tæki`;
+      const newSha = await api.writeJson(`projects/${projectId}/equipment.json`, updated, equipmentSha, msg);
+      setEquipment(updated);
+      setEquipmentSha(newSha);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (loadError || !project) return (
@@ -46,6 +97,7 @@ export function ProjectView() {
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'bays', label: `Reitir (${bays.length})` },
+    { id: 'equipment', label: `Tæki (${equipment.length})` },
     { id: 'station', label: 'Stöðvarmerki' },
     { id: 'overview', label: 'Heildar listi' },
   ];
@@ -65,7 +117,7 @@ export function ProjectView() {
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{project.name}</h1>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {equipment.length} tæki
+            {equipment.length} tæki · {bays.length} reitir
           </div>
         </div>
         <Badge phase={project.phase}>{project.phase}</Badge>
@@ -95,7 +147,7 @@ export function ProjectView() {
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Reitir */}
       {tab === 'bays' && (
         <div>
           <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -120,7 +172,7 @@ export function ProjectView() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{bay.display_id}</div>
                       <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        {bay.signals.length} merki
+                        {bay.signals.length} merki · {bay.equipment_ids.length} tæki
                       </div>
                     </div>
                     <span style={{ color: 'var(--muted)', fontSize: '18px' }}>›</span>
@@ -129,6 +181,93 @@ export function ProjectView() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tæki */}
+      {tab === 'equipment' && (
+        <div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr>
+                {['Kóði', 'Gerð', 'Lýsing', ''].map(h => (
+                  <th key={h} style={{
+                    padding: '7px 10px', background: 'var(--surface-alt)',
+                    borderBottom: '1px solid var(--line)', fontWeight: 600,
+                    color: 'var(--text-secondary)', textAlign: 'left',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {equipment.map(eq => (
+                <tr key={eq.id}>
+                  <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--line-muted)', fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}>
+                    {eq.code}
+                  </td>
+                  <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--line-muted)' }}>
+                    {eq.type}
+                  </td>
+                  <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--line-muted)', color: 'var(--muted)', width: '100%' }}>
+                    {eq.description || '—'}
+                  </td>
+                  <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--line-muted)', whiteSpace: 'nowrap' }}>
+                    <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDeleteEquipment(eq.id)}>
+                      Eyða
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {/* Add row */}
+              <tr>
+                <td style={{ padding: '6px 10px' }}>
+                  <input
+                    value={newCode}
+                    onChange={e => setNewCode(e.target.value.toUpperCase())}
+                    onKeyDown={e => e.key === 'Enter' && handleAddEquipment()}
+                    placeholder="QA1"
+                    style={{
+                      background: 'var(--surface-alt)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                      padding: '5px 8px', fontSize: '12px', fontFamily: 'monospace',
+                      width: '90px', outline: 'none',
+                    }}
+                  />
+                </td>
+                <td style={{ padding: '6px 10px' }}>
+                  <select
+                    value={newType}
+                    onChange={e => setNewType(e.target.value as EquipmentType)}
+                    style={{
+                      background: 'var(--surface-alt)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                      padding: '5px 8px', fontSize: '12px', outline: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    {EQUIPMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding: '6px 10px' }}>
+                  <input
+                    value={newDesc}
+                    onChange={e => setNewDesc(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddEquipment()}
+                    placeholder="Lýsing (valkvæmt)"
+                    style={{
+                      background: 'var(--surface-alt)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                      padding: '5px 8px', fontSize: '12px', width: '100%', outline: 'none',
+                    }}
+                  />
+                </td>
+                <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                  <Button size="sm" disabled={!newCode.trim() || saving} onClick={handleAddEquipment}>
+                    + Bæta við
+                  </Button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
 
