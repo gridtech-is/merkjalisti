@@ -114,6 +114,15 @@ export function ProjectView() {
     } finally { setSaving(false); }
   };
 
+  const handleUpdate = async (eqId: string, patch: Partial<Equipment>) => {
+    if (!projectId) return;
+    const updated = equipment.map(e => e.id === eqId ? { ...e, ...patch } : e);
+    setSaving(true);
+    try {
+      await saveEquipment(updated);
+    } finally { setSaving(false); }
+  };
+
   const handleDelete = async (eqId: string) => {
     if (!projectId) return;
     setSaving(true);
@@ -147,14 +156,27 @@ export function ProjectView() {
     borderRadius: 'var(--radius-sm)', color: 'var(--text)',
     padding: '5px 8px', fontSize: '12px', outline: 'none',
   };
+  const editInput: React.CSSProperties = {
+    background: 'transparent', border: '1px solid transparent',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+    padding: '3px 6px', fontSize: '12px', fontFamily: 'inherit',
+    width: '100%', outline: 'none',
+  };
+  const editSelect: React.CSSProperties = {
+    background: 'var(--surface-alt)', border: '1px solid var(--line)',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+    padding: '3px 6px', fontSize: '12px', outline: 'none', cursor: 'pointer', width: '100%',
+  };
   const cellStyle: React.CSSProperties = {
-    padding: '7px 10px', borderBottom: '1px solid var(--line-muted)', fontSize: '13px',
+    padding: '4px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '13px',
   };
   const headStyle: React.CSSProperties = {
     padding: '6px 10px', background: 'var(--surface-alt)',
     borderBottom: '1px solid var(--line)', fontWeight: 600,
     color: 'var(--text-secondary)', textAlign: 'left', fontSize: '12px',
   };
+  const focusInput = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
+  const blurInput = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
   return (
     <div>
@@ -242,9 +264,24 @@ export function ProjectView() {
               <tbody>
                 {apparatus.map(eq => (
                   <tr key={eq.id}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}>{eq.code}</td>
-                    <td style={cellStyle}>{eq.type ?? '—'}</td>
-                    <td style={{ ...cellStyle, color: 'var(--muted)', width: '100%' }}>{eq.description || '—'}</td>
+                    <td style={{ ...cellStyle, minWidth: '80px' }}>
+                      <input style={{ ...editInput, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}
+                        defaultValue={eq.code} key={`ac-${eq.id}`}
+                        onFocus={focusInput} onBlur={e => { blurInput(e); const v = e.target.value.trim().toUpperCase(); if (v && v !== eq.code) handleUpdate(eq.id, { code: v }); }}
+                        onChange={() => {}} />
+                    </td>
+                    <td style={{ ...cellStyle, minWidth: '130px' }}>
+                      <select style={editSelect} value={eq.type ?? 'Annað'}
+                        onChange={e => handleUpdate(eq.id, { type: e.target.value as ApparatusType })}>
+                        {APPARATUS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ ...cellStyle, width: '100%' }}>
+                      <input style={editInput} defaultValue={eq.description} key={`ad-${eq.id}`}
+                        placeholder="Lýsing" onFocus={focusInput}
+                        onBlur={e => { blurInput(e); handleUpdate(eq.id, { description: e.target.value }); }}
+                        onChange={() => {}} />
+                    </td>
                     <td style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                       <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
                     </td>
@@ -286,14 +323,53 @@ export function ProjectView() {
               <tbody>
                 {ieds.map(eq => (
                   <tr key={eq.id}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}>{eq.code}</td>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{eq.ied_name ?? '—'}</td>
-                    <td style={{ ...cellStyle, color: 'var(--muted)', fontSize: '11px' }}>
-                      {eq.template_id ? (templates.find(t => t.id === eq.template_id)?.name ?? eq.template_id) : '—'}
+                    <td style={{ ...cellStyle, minWidth: '80px' }}>
+                      <input style={{ ...editInput, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}
+                        defaultValue={eq.code} key={`ic-${eq.id}`}
+                        onFocus={focusInput} onBlur={e => { blurInput(e); const v = e.target.value.trim().toUpperCase(); if (v && v !== eq.code) handleUpdate(eq.id, { code: v }); }}
+                        onChange={() => {}} />
                     </td>
-                    <td style={cellStyle}>{eq.manufacturer ?? '—'}</td>
-                    <td style={cellStyle}>{eq.model ?? '—'}</td>
-                    <td style={{ ...cellStyle, color: 'var(--muted)', width: '100%' }}>{eq.description || '—'}</td>
+                    <td style={{ ...cellStyle, minWidth: '90px' }}>
+                      <input style={{ ...editInput, fontFamily: 'monospace' }}
+                        defaultValue={eq.ied_name ?? ''} key={`in-${eq.id}`} placeholder="Q0IED"
+                        onFocus={focusInput} onBlur={e => { blurInput(e); handleUpdate(eq.id, { ied_name: e.target.value || null }); }}
+                        onChange={() => {}} />
+                    </td>
+                    <td style={{ ...cellStyle, minWidth: '160px' }}>
+                      <select style={editSelect} value={eq.template_id ?? ''}
+                        onChange={e => {
+                          const tmpl = templates.find(t => t.id === e.target.value) ?? null;
+                          handleUpdate(eq.id, {
+                            template_id: tmpl?.id ?? null,
+                            manufacturer: tmpl?.manufacturer ?? eq.manufacturer,
+                            model: tmpl?.model ?? eq.model,
+                            description: tmpl?.description ?? eq.description,
+                          });
+                        }}>
+                        <option value="">— Ekkert sniðmát —</option>
+                        {templates.filter(t => t.category === 'ied').map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ ...cellStyle, minWidth: '90px' }}>
+                      <input style={editInput} defaultValue={eq.manufacturer ?? ''} key={`im-${eq.id}`}
+                        placeholder="ABB" onFocus={focusInput}
+                        onBlur={e => { blurInput(e); handleUpdate(eq.id, { manufacturer: e.target.value || null }); }}
+                        onChange={() => {}} />
+                    </td>
+                    <td style={{ ...cellStyle, minWidth: '80px' }}>
+                      <input style={editInput} defaultValue={eq.model ?? ''} key={`imd-${eq.id}`}
+                        placeholder="REL670" onFocus={focusInput}
+                        onBlur={e => { blurInput(e); handleUpdate(eq.id, { model: e.target.value || null }); }}
+                        onChange={() => {}} />
+                    </td>
+                    <td style={{ ...cellStyle, width: '100%' }}>
+                      <input style={editInput} defaultValue={eq.description} key={`id-${eq.id}`}
+                        placeholder="Lýsing" onFocus={focusInput}
+                        onBlur={e => { blurInput(e); handleUpdate(eq.id, { description: e.target.value }); }}
+                        onChange={() => {}} />
+                    </td>
                     <td style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                       <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
                     </td>
