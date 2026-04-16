@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { loadBay, saveBay, type BayFile } from '../services/bayService';
+import { loadBay, saveBay, saveBayTemplate, type BayFile } from '../services/bayService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
@@ -29,6 +29,7 @@ export function BayView() {
   const [showPicker, setShowPicker] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [testPhase, setTestPhase] = useState<'FAT' | 'SAT' | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -136,6 +137,19 @@ export function BayView() {
 
   useAutoCommit(isDirty, commitChanges);
 
+  const handleSaveTemplate = async () => {
+    if (!bayFile) return;
+    const name = prompt('Nafn á sniðmáti:', bayFile.bay.display_id);
+    if (!name) return;
+    setSavingTemplate(true);
+    try {
+      await saveBayTemplate(api, bayFile.bay, name);
+      alert(`Sniðmát "${name}" vistað.`);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (!bayFile) return <p style={{ color: 'var(--danger)' }}>Reitur finnst ekki.</p>;
 
@@ -168,6 +182,7 @@ export function BayView() {
               ✓ Vistað {lastSaved.toLocaleTimeString('is-IS')}
             </span>
           )}
+          <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
           <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
           <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
           <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>

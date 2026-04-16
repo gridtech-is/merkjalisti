@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { createBay } from '../services/bayService';
+import { createBay, listBayTemplates } from '../services/bayService';
 import { Card, Button, Input, Select } from '../components/ui';
 import type { BaySignal, BayTemplate } from '../types';
 
@@ -19,16 +19,7 @@ export function NewBay() {
 
   // Load available bay templates from GitHub
   useEffect(() => {
-    api.listDirectory('templates/bays').then(async files => {
-      const loaded: BayTemplate[] = [];
-      for (const f of files.filter(f => f.endsWith('.json'))) {
-        try {
-          const { data } = await api.readJson<BayTemplate>(`templates/bays/${f}`);
-          loaded.push(data);
-        } catch { /* skip */ }
-      }
-      setTemplates(loaded);
-    }).catch(() => {});
+    listBayTemplates(api).then(setTemplates).catch(() => {});
   }, [api]);
 
   const handleCreate = async () => {

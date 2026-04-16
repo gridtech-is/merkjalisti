@@ -1,6 +1,6 @@
 // src/services/bayService.ts
 import type { GitHubApi } from '../github/api';
-import type { Bay, BaySignal } from '../types';
+import type { Bay, BaySignal, BayTemplate } from '../types';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -59,6 +59,44 @@ export async function loadBay(api: GitHubApi, projectId: string, bayId: string):
   const path = `projects/${projectId}/bays/${bayId}.json`;
   const { data, sha } = await api.readJson<Bay>(path);
   return { bay: data, sha };
+}
+
+export async function saveBayTemplate(
+  api: GitHubApi,
+  bay: Bay,
+  templateName: string
+): Promise<void> {
+  const template: BayTemplate = {
+    template_name: templateName,
+    station: bay.station,
+    voltage_level: bay.voltage_level,
+    bay_name: bay.bay_name,
+    display_id: bay.display_id,
+    equipment_codes: [],
+    signals: bay.signals.map(({ phase_added: _p, ...rest }) => rest),
+  };
+  const id = uuid();
+  await api.writeJson(
+    `data/bay_templates/${id}.json`,
+    template,
+    null,
+    `Bay sniðmát: ${templateName}`
+  );
+}
+
+export async function listBayTemplates(api: GitHubApi): Promise<BayTemplate[]> {
+  try {
+    const entries = await api.listDirectory('data/bay_templates');
+    const results = await Promise.allSettled(
+      entries.filter(e => e.endsWith('.json'))
+        .map(f => api.readJson<BayTemplate>(`data/bay_templates/${f}`))
+    );
+    return results
+      .filter((r): r is PromiseFulfilledResult<{ data: BayTemplate; sha: string }> => r.status === 'fulfilled')
+      .map(r => r.value.data);
+  } catch {
+    return [];
+  }
 }
 
 export async function saveBay(
