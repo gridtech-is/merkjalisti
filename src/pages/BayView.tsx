@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { loadBay, saveBay, saveBayTemplate, type BayFile } from '../services/bayService';
+import { loadBay, saveBay, saveBayTemplate, sendBayForReview, approveBay, rejectBay, type BayFile } from '../services/bayService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
@@ -12,7 +12,7 @@ import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Equipment, SignalLibraryEntry, SignalState } from '../types';
+import type { BaySignal, Bay, Equipment, SignalLibraryEntry, SignalState } from '../types';
 
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
@@ -30,6 +30,7 @@ export function BayView() {
   const [showImport, setShowImport] = useState(false);
   const [testPhase, setTestPhase] = useState<'FAT' | 'SAT' | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [reviewSending, setReviewSending] = useState(false);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -129,7 +130,29 @@ export function BayView() {
   const commitChanges = async () => {
     const current = bayFileRef.current;
     if (!current || !projectId) return;
-    const updated = await saveBay(api, projectId, current, 'DESIGN');
+
+    let bayToSave = current;
+    if (current.bay.status === 'LOCKED') {
+      const clearedBay: Bay = {
+        ...current.bay,
+        status: 'DRAFT',
+        signals: current.bay.signals.map(s => ({
+          ...s,
+          review_flagged: false,
+          review_comment: null,
+        })),
+      };
+      bayToSave = { ...current, bay: clearedBay };
+      setBayFile(bayToSave);
+      appendChange(api, projectId, {
+        user: userName, phase: 'DESIGN', type: 'PHASE_CHANGED',
+        target_id: current.bay.id, target_type: 'bay',
+        field: null, old_value: 'LOCKED', new_value: 'DRAFT',
+        comment: `Reitur opnaður aftur eftir læsingu: ${current.bay.display_id}`,
+      });
+    }
+
+    const updated = await saveBay(api, projectId, bayToSave, bayToSave.bay.status);
     setBayFile(updated);
     setIsDirty(false);
     setLastSaved(new Date());
@@ -150,10 +173,57 @@ export function BayView() {
     }
   };
 
+  const handleSendForReview = async () => {
+    if (!bayFile || !projectId) return;
+    if (!confirm(`Senda "${bayFile.bay.display_id}" í yfirferð? Reiturinn verður læstur þar til yfirferð lýkur.`)) return;
+    setReviewSending(true);
+    try {
+      const updated = await sendBayForReview(api, projectId, bayFile, userName);
+      setBayFile(updated);
+      setIsDirty(false);
+    } catch {
+      alert('Villa við að senda í yfirferð. Reyndu aftur.');
+    } finally {
+      setReviewSending(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!bayFile || !projectId) return;
+    const comment = prompt('Athugasemd (valkvæmt):') ?? null;
+    setReviewSending(true);
+    try {
+      const updated = await approveBay(api, projectId, bayFile, userName, comment);
+      setBayFile(updated);
+    } catch {
+      alert('Villa við samþykki. Reyndu aftur.');
+    } finally {
+      setReviewSending(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!bayFile || !projectId) return;
+    const comment = prompt('Ástæða hafnunar (nauðsynlegt):');
+    if (!comment?.trim()) return;
+    setReviewSending(true);
+    try {
+      const updated = await rejectBay(api, projectId, bayFile, userName, comment.trim());
+      setBayFile(updated);
+    } catch {
+      alert('Villa við höfnun. Reyndu aftur.');
+    } finally {
+      setReviewSending(false);
+    }
+  };
+
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (!bayFile) return <p style={{ color: 'var(--danger)' }}>Reitur finnst ekki.</p>;
 
   const { bay } = bayFile;
+  const isInReview = bay.status === 'IN_REVIEW';
+  const isLocked = bay.status === 'LOCKED';
+  const isDraftStatus = bay.status === 'DRAFT';
 
   return (
     <div>
@@ -173,22 +243,63 @@ export function BayView() {
             {bay.station} / {bay.voltage_level} / {bay.bay_name} — {bay.signals.length} merki
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {isDirty && (
-            <span style={{ fontSize: '12px', color: 'var(--warn)' }}>● Óvistað</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {/* Status badge */}
+          {!isDraftStatus && (
+            <span style={{
+              fontSize: '11px', fontWeight: 700, padding: '3px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: isInReview ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : 'color-mix(in srgb, var(--success) 20%, transparent)',
+              color: isInReview ? 'var(--accent)' : 'var(--success)',
+              border: `1px solid ${isInReview ? 'var(--accent)' : 'var(--success)'}`,
+            }}>
+              {isInReview
+                ? `Í YFIRFERÐ — sent af ${bay.review?.sent_by ?? ''} ${bay.review?.sent_at ? new Date(bay.review.sent_at).toLocaleDateString('is-IS') : ''}`
+                : `LÆST — samþykkt af ${bay.review?.reviewed_by ?? ''} ${bay.review?.reviewed_at ? new Date(bay.review.reviewed_at).toLocaleDateString('is-IS') : ''}`
+              }
+            </span>
           )}
+
+          {isDirty && <span style={{ fontSize: '12px', color: 'var(--warn)' }}>● Óvistað</span>}
           {lastSaved && !isDirty && (
             <span style={{ fontSize: '12px', color: 'var(--success)' }}>
               ✓ Vistað {lastSaved.toLocaleTimeString('is-IS')}
             </span>
           )}
-          <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
-          <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-          <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
-          <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
-          <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
-          <Button size="sm" variant="ghost" onClick={() => setTestPhase('FAT')}>FAT</Button>
-          <Button size="sm" variant="ghost" onClick={() => setTestPhase('SAT')}>SAT</Button>
+
+          {isDraftStatus && (
+            <>
+              <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
+              <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
+              <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
+              <Button size="sm" variant="ghost" onClick={() => setTestPhase('FAT')}>FAT</Button>
+              <Button size="sm" variant="ghost" onClick={() => setTestPhase('SAT')}>SAT</Button>
+              <Button size="sm" variant="ghost" onClick={handleSendForReview} disabled={reviewSending}>→ Senda í yfirferð</Button>
+            </>
+          )}
+
+          {isInReview && (
+            <>
+              <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={handleReject} disabled={reviewSending} style={{ color: 'var(--danger)' }}>✕ Hafna</Button>
+              <Button size="sm" onClick={handleApprove} disabled={reviewSending}>✓ Samþykkja</Button>
+            </>
+          )}
+
+          {isLocked && (
+            <>
+              <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
+              <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
+              <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
+              <Button size="sm" variant="ghost" onClick={() => setTestPhase('FAT')}>FAT</Button>
+              <Button size="sm" variant="ghost" onClick={() => setTestPhase('SAT')}>SAT</Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -251,6 +362,8 @@ export function BayView() {
         library={signalLibrary}
         states={signalStates}
         bayDisplayId={bay.display_id}
+        // reviewMode added in Task 3
+        {...({ reviewMode: isInReview || bay.signals.some(s => s.review_flagged) } as object)}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
