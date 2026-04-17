@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../context/ApiContext';
 import { listProjects } from '../services/projectService';
-import { listBays, loadBay, saveBay } from '../services/bayService';
+import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
 import { Button } from '../components/ui';
-import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType } from '../types';
+import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate } from '../types';
 
 type LibTab = 'signals' | 'states' | 'templates';
 
@@ -491,7 +491,94 @@ function StatesTab() {
 }
 
 function TemplatesTab() {
-  return <p style={{ color: 'var(--muted)' }}>Sniðmát — kemur bráðlega</p>;
+  const { api } = useApi();
+  const [eqTemplates, setEqTemplates] = useState<EquipmentTemplate[]>([]);
+  const [bayTemplates, setBayTemplates] = useState<BayTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState<'equipment' | 'bay'>('equipment');
+
+  useEffect(() => {
+    Promise.all([
+      api.readJson<EquipmentTemplate[]>('data/equipment_templates.json').catch(() => ({ data: [] as EquipmentTemplate[], sha: '' })),
+      listBayTemplates(api),
+    ]).then(([{ data: eq }, bay]) => {
+      setEqTemplates(eq);
+      setBayTemplates(bay);
+    }).finally(() => setLoading(false));
+  }, [api]);
+
+  const cell: React.CSSProperties = {
+    padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px',
+  };
+  const head: React.CSSProperties = {
+    ...cell, fontWeight: 600, color: 'var(--text-secondary)',
+    background: 'var(--surface-alt)', whiteSpace: 'nowrap',
+  };
+
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        {([['equipment', `Tækjasniðmát (${eqTemplates.length})`], ['bay', `Reitsniðmát (${bayTemplates.length})`]] as ['equipment' | 'bay', string][]).map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setSubTab(id)}
+            style={{
+              background: subTab === id ? 'var(--accent)' : 'var(--surface-alt)',
+              color: subTab === id ? 'white' : 'var(--text-secondary)',
+              border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+              padding: '5px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+            }}>{label}</button>
+        ))}
+      </div>
+
+      {subTab === 'equipment' && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>{['Nafn', 'Flokkur', 'Framleiðandi', 'Líkan', 'Lýsing'].map(h => <th key={h} style={head}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {eqTemplates.length === 0 && (
+                <tr><td colSpan={5} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin tækjasniðmát</td></tr>
+              )}
+              {eqTemplates.map((t, i) => (
+                <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                  <td style={{ ...cell, fontWeight: 600 }}>{t.name}</td>
+                  <td style={{ ...cell, color: 'var(--muted)', fontSize: '11px' }}>{t.category}</td>
+                  <td style={{ ...cell }}>{t.manufacturer ?? '—'}</td>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px' }}>{t.model ?? '—'}</td>
+                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.description ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {subTab === 'bay' && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>{['Nafn', 'Display ID', 'Merki', 'Tæki'].map(h => <th key={h} style={head}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {bayTemplates.length === 0 && (
+                <tr><td colSpan={4} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin reitsniðmát</td></tr>
+              )}
+              {bayTemplates.map((t, i) => (
+                <tr key={t.template_name} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                  <td style={{ ...cell, fontWeight: 600 }}>{t.template_name}</td>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent)' }}>{t.display_id}</td>
+                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.signals.length}</td>
+                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.equipment_codes.length > 0 ? t.equipment_codes.join(', ') : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function LibraryView() {
