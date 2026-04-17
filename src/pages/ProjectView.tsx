@@ -121,23 +121,18 @@ export function ProjectView() {
       loadProject(api, projectId),
       listBays(api, projectId),
       api.readJson<EquipmentTemplate[]>('data/equipment_templates.json').catch(() => ({ data: [], sha: '' })),
-    ]).then(([files, bayList, { data: tmplData }]) => {
+      loadStation(api, projectId).catch(() => null),
+    ]).then(([files, bayList, { data: tmplData }, stationFile]) => {
       setProject(files.project);
       setProjectSha(files.projectSha);
       setEquipment(files.equipment);
       setEquipmentSha(files.equipmentSha);
       setBays(bayList);
       setTemplates(tmplData);
+      setStationStatus(stationFile?.station.status ?? null);
     }).catch(() => {
       setLoadError('Gat ekki hlaðið verkefni. Það gæti verið ófullkomið eða eytt.');
     }).finally(() => setLoading(false));
-  }, [api, projectId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    loadStation(api, projectId)
-      .then(f => setStationStatus(f.station.status))
-      .catch(() => setStationStatus(null));
   }, [api, projectId]);
 
   // When IED template changes, auto-fill description
