@@ -33,7 +33,7 @@ const PHASE_COLORS: Record<ProjectPhase, string> = {
   REVIEW: 'var(--warn)', FAT: '#8b5cf6', SAT: 'var(--success)',
 };
 
-function PhaseBar({ phase, onAdvance, disabled }: { phase: ProjectPhase; onAdvance: () => void; disabled?: boolean }) {
+function PhaseBar({ phase, onAdvance, onRegress, disabled }: { phase: ProjectPhase; onAdvance: () => void; onRegress: () => void; disabled?: boolean }) {
   const idx = PHASE_ORDER.indexOf(phase);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
@@ -52,8 +52,13 @@ function PhaseBar({ phase, onAdvance, disabled }: { phase: ProjectPhase; onAdvan
           )}
         </React.Fragment>
       ))}
+      {idx > 0 && (
+        <Button size="sm" variant="ghost" onClick={onRegress} disabled={disabled} style={{ marginLeft: 'var(--space-2)' }}>
+          ← Til baka í {PHASE_LABELS[PHASE_ORDER[idx - 1]]}
+        </Button>
+      )}
       {idx < PHASE_ORDER.length - 1 && (
-        <Button size="sm" onClick={onAdvance} disabled={disabled} style={{ marginLeft: 'var(--space-2)' }}>
+        <Button size="sm" onClick={onAdvance} disabled={disabled}>
           Fara í {PHASE_LABELS[PHASE_ORDER[idx + 1]]} →
         </Button>
       )}
@@ -285,6 +290,23 @@ export function ProjectView() {
           setSaving(true);
           try {
             const { project: updated, sha } = await saveProjectPhase(api, projectId!, project, projectSha, next);
+            setProject(updated);
+            setProjectSha(sha);
+          } catch {
+            alert('Villa við að vista fasa. Reyndu aftur.');
+          } finally {
+            setSaving(false);
+          }
+        }}
+        onRegress={async () => {
+          if (saving) return;
+          const idx = PHASE_ORDER.indexOf(project.phase);
+          if (idx <= 0) return;
+          const prev = PHASE_ORDER[idx - 1];
+          if (!confirm(`Fara úr ${project.phase} til baka í ${prev}?`)) return;
+          setSaving(true);
+          try {
+            const { project: updated, sha } = await saveProjectPhase(api, projectId!, project, projectSha, prev);
             setProject(updated);
             setProjectSha(sha);
           } catch {
