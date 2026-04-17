@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { loadStation, sendStationForReview, approveStation, rejectStation } from './stationService';
+import { appendChange } from './changelogService';
 import type { StationSignals } from '../types';
 
 const mockApi = {
@@ -29,6 +30,12 @@ describe('loadStation', () => {
     const result = await loadStation(mockApi as never, 'p1');
     expect(result.station).toEqual({ status: 'DRAFT', review: null, signals: [] });
   });
+
+  it('returns empty DRAFT when file data is null', async () => {
+    mockApi.readJson.mockResolvedValue({ data: null, sha: '' });
+    const result = await loadStation(mockApi as never, 'p1');
+    expect(result.station).toEqual({ status: 'DRAFT', review: null, signals: [] });
+  });
 });
 
 describe('sendStationForReview', () => {
@@ -44,6 +51,11 @@ describe('sendStationForReview', () => {
       result.station,
       'sha1',
       expect.stringContaining('[REVIEW]')
+    );
+    expect(appendChange).toHaveBeenCalledWith(
+      mockApi,
+      'p1',
+      expect.objectContaining({ target_type: 'station', target_id: 'p1', type: 'REVIEW_ADDED' })
     );
   });
 });
