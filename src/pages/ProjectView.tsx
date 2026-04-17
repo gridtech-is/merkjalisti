@@ -201,12 +201,11 @@ export function ProjectView() {
         const bayFile = await loadBay(api, projectId, bay.id);
         await sendBayForReview(api, projectId, bayFile, userName);
       }
-      const updated = await listBays(api, projectId);
-      setBays(updated);
     } catch {
       alert('Villa við að senda reiti í yfirferð.');
     } finally {
       setSendingReview(false);
+      listBays(api, projectId).then(setBays).catch(() => {});
     }
   };
 
@@ -341,7 +340,7 @@ export function ProjectView() {
                           {bay.signals.length} merki · {bay.equipment_ids.length} tæki
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                         <span style={{
                           fontSize: '10px', fontWeight: 700, padding: '2px 7px',
                           borderRadius: 'var(--radius-sm)',
@@ -351,7 +350,7 @@ export function ProjectView() {
                         }}>{statusLabel}</span>
                         {bay.status === 'DRAFT' && (
                           <Button size="sm" variant="ghost" disabled={sendingReview}
-                            onClick={() => handleSendBayForReview(bay.id)}>
+                            onClick={e => { e.stopPropagation(); handleSendBayForReview(bay.id); }}>
                             → Yfirferð
                           </Button>
                         )}
