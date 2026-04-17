@@ -8,7 +8,10 @@ import { ChangelogTab } from '../components/ChangelogTab';
 import { listBays, loadBay, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
-import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase } from '../types';
+import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase, BayStatus } from '../types';
+import { StationSignalsTab } from '../components/StationSignalsTab';
+import { OverviewTab } from '../components/OverviewTab';
+import { loadStation } from '../services/stationService';
 
 type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
 type EqTab = 'apparatus' | 'ied';
@@ -99,6 +102,7 @@ export function ProjectView() {
   const [saving, setSaving] = useState(false);
   const [projectSha, setProjectSha] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
+  const [stationStatus, setStationStatus] = useState<BayStatus | null>(null);
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -127,6 +131,13 @@ export function ProjectView() {
     }).catch(() => {
       setLoadError('Gat ekki hlaðið verkefni. Það gæti verið ófullkomið eða eytt.');
     }).finally(() => setLoading(false));
+  }, [api, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadStation(api, projectId)
+      .then(f => setStationStatus(f.station.status))
+      .catch(() => setStationStatus(null));
   }, [api, projectId]);
 
   // When IED template changes, auto-fill description
@@ -227,10 +238,11 @@ export function ProjectView() {
   const apparatus = equipment.filter(e => e.category === 'apparatus' || !e.category);
   const ieds = equipment.filter(e => e.category === 'ied');
 
+  const stationIndicator = stationStatus === 'IN_REVIEW' ? ' •' : stationStatus === 'LOCKED' ? ' ✓' : '';
   const TABS: { id: Tab; label: string }[] = [
     { id: 'bays', label: `Reitir (${bays.length})` },
     { id: 'equipment', label: `Tæki (${equipment.length})` },
-    { id: 'station', label: 'Stöðvarmerki' },
+    { id: 'station', label: `Stöðvarmerki${stationIndicator}` },
     { id: 'overview', label: 'Heildar listi' },
     { id: 'changelog', label: 'Breytingasaga' },
   ];
@@ -577,15 +589,15 @@ export function ProjectView() {
         />
       )}
 
-      {tab === 'station' && (
-        <Card style={{ color: 'var(--muted)', textAlign: 'center', padding: 'var(--space-8)' }}>
-          Stöðvarmerki — kemur í Plan 3
-        </Card>
+      {tab === 'station' && projectId && project && (
+        <StationSignalsTab
+          projectId={projectId}
+          projectPhase={project.phase}
+          equipment={equipment}
+        />
       )}
-      {tab === 'overview' && (
-        <Card style={{ color: 'var(--muted)', textAlign: 'center', padding: 'var(--space-8)' }}>
-          Heildar listi — kemur í Plan 3
-        </Card>
+      {tab === 'overview' && projectId && project && (
+        <OverviewTab projectId={projectId} projectName={project.name} />
       )}
       {tab === 'changelog' && projectId && <ChangelogTab projectId={projectId} />}
     </div>
