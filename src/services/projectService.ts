@@ -94,9 +94,13 @@ export async function loadProject(api: GitHubApi, id: string): Promise<ProjectFi
     api.readJson<ChangeEntry[]>(`${base}/changelog.json`),
     api.readJson<Testing>(`${base}/testing.json`),
   ]);
-  const stationSignals: StationSignals = Array.isArray(s.data)
-    ? { status: 'DRAFT', review: null, signals: s.data as BaySignal[] }
-    : s.data as StationSignals;
+  const raw = s.data;
+  const stationSignals: StationSignals =
+    raw == null
+      ? { status: 'DRAFT', review: null, signals: [] }
+      : Array.isArray(raw)
+        ? { status: 'DRAFT', review: null, signals: raw as BaySignal[] }
+        : raw as StationSignals;
   return {
     project: p.data, projectSha: p.sha,
     equipment: e.data, equipmentSha: e.sha,

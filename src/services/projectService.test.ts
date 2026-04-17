@@ -72,6 +72,7 @@ describe('createProject', () => {
     expect(result.project.name).toBe('Hamrahlíð 66kV');
     expect(result.project.phase).toBe('DESIGN');
     expect(result.project.id).toMatch(/^[0-9a-f-]{36}$/); // UUID format
+    expect(result.stationSignals).toEqual({ status: 'DRAFT', review: null, signals: [] });
   });
 });
 
@@ -105,7 +106,7 @@ describe('loadProject', () => {
     mockApi.readJson
       .mockResolvedValueOnce({ data: { id: projectId, name: 'X', phase: 'DESIGN', description: '', created: '2026-01-01T00:00:00Z', review: null }, sha: 's1' })
       .mockResolvedValueOnce({ data: [] as Equipment[], sha: 's2' })
-      .mockResolvedValueOnce({ data: [], sha: 's3' })
+      .mockResolvedValueOnce({ data: { status: 'DRAFT', review: null, signals: [] }, sha: 's3' })
       .mockResolvedValueOnce({ data: [], sha: 's4' })
       .mockResolvedValueOnce({ data: { fat_started: null, fat_completed: null, sat_started: null, sat_completed: null, entries: [] }, sha: 's5' });
 
