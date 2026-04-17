@@ -32,6 +32,9 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
   const fileRef = useRef<StationFile | null>(null);
   fileRef.current = file;
 
+  const projectPhaseRef = useRef(projectPhase);
+  projectPhaseRef.current = projectPhase;
+
   useEffect(() => {
     Promise.all([
       loadStation(api, projectId),
@@ -106,7 +109,7 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
       toSave = { ...current, station: cleared };
     }
 
-    const updated = await saveStation(api, projectId, toSave, projectPhase);
+    const updated = await saveStation(api, projectId, toSave, projectPhaseRef.current);
     setFile(updated);
     setIsDirty(false);
     setLastSaved(new Date());
@@ -142,10 +145,10 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
   const handleApprove = async () => {
     const current = fileRef.current;
     if (!current) return;
+    const raw = prompt('Athugasemd (valkvæmt):');
+    if (raw === null) return;
     setReviewSending(true);
     try {
-      const raw = prompt('Athugasemd (valkvæmt):');
-      if (raw === null) return;
       const comment = raw.trim() || null;
       const updated = await approveStation(api, projectId, current, userName, comment);
       setFile(updated);
@@ -159,10 +162,10 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
   const handleReject = async () => {
     const current = fileRef.current;
     if (!current) return;
+    const comment = prompt('Ástæða hafnunar (nauðsynlegt):');
+    if (!comment?.trim()) return;
     setReviewSending(true);
     try {
-      const comment = prompt('Ástæða hafnunar (nauðsynlegt):');
-      if (!comment?.trim()) return;
       const updated = await rejectStation(api, projectId, current, userName, comment.trim());
       setFile(updated);
     } catch {
