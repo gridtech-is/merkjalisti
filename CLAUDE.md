@@ -81,3 +81,62 @@ cd ..
 git clone git@github.com:gridtech-is/merkjalisti-data.git
 ```
 GitHub token þarf að setja í localStorage í appinu (útskýrt í `src/github/token.ts`).
+
+---
+
+## Claude Code uppsetning fyrir þetta verkefni
+
+Svo að Claude Code á nýrri tölvu virki eins og hér, setjið upp eftirfarandi.
+
+### 1. Plugins / skills sem VERÐUR að hafa
+
+**Superpowers plugin** (mest notað í þessu verkefni):
+```
+/plugin install superpowers
+```
+Veitir þessi skills sem Claude notar reglulega hér:
+- `superpowers:brainstorming` — nota **alltaf** áður en nýtt feature er hannað
+- `superpowers:writing-plans` — skrifa implementation plan úr spec (næsta skref fyrir Plan 4)
+- `superpowers:executing-plans` — framkvæma plan með review checkpoints
+- `superpowers:test-driven-development` — TDD er venjan hér (sjá `*.test.ts` skrár)
+- `superpowers:systematic-debugging` — fyrir bug fixes
+- `superpowers:verification-before-completion` — keyra `npm run build` + `npm test` áður en sagt er "búið"
+- `superpowers:using-git-worktrees` — fyrir einangrað feature work
+
+**Feature-dev plugin** (fyrir stór features):
+```
+/plugin install feature-dev
+```
+Veitir `feature-dev:code-explorer`, `feature-dev:code-architect`, `feature-dev:code-reviewer` — gott fyrir Plan 4 implementation.
+
+**Code-review plugin**:
+```
+/plugin install code-review
+```
+`code-review:code-review` — nota áður en merge á main.
+
+### 2. MCP servers sem mælt er með
+
+- **context7** — sækir nýjustu docs fyrir React, Vite, React Router, Octokit, xlsx. Nauðsynlegt þegar spurt er um library API.
+- **playwright** — browser automation. Gagnlegt til að prófa SCD import end-to-end og UI flow í Plan 4.
+
+### 3. Mín ráðlegging fyrir næstu session
+
+**Ef næsta skref er Plan 4:**
+1. Byrjið á `superpowers:writing-plans` með spec-ið sem inntak:
+   > „Skrifaðu implementation plan fyrir `docs/superpowers/specs/2026-04-17-plan4-equipment-templates-design.md`"
+2. Plan fer í `docs/superpowers/plans/2026-04-17-plan4-equipment-templates.md`
+3. Svo `superpowers:executing-plans` til að framkvæma með TDD og checkpoints
+
+**Ef næsta skref er SCD import klárun:**
+1. `npm run dev`, opna app, prófa með raunverulegri SCD skrá
+2. Nota **playwright MCP** til að automatíta UI test
+3. Laga og committa
+
+### 4. Vinnuferli sem Teddi kann að meta
+- **Íslenska** í öllum commits, plans, og samtölum
+- **Spyrja áður en committað** / push-að / óafturkræfar aðgerðir
+- **Gera ekki meira en beðið er um** — engin scope creep
+- **Beint og hnitmiðað** — engar óþarfa útskýringar
+- **CSS variables** (engin CSS modules) — sjá `src/design-tokens.css`
+- **Commits á íslensku**, short subject + body sem útskýrir *af hverju*
