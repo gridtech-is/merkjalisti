@@ -32,6 +32,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
   const [bays, setBays] = useState<Bay[]>([]);
   const [stationSignals, setStationSignals] = useState<BaySignal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [selectedBays, setSelectedBays] = useState<Set<string>>(new Set()); // empty = all
@@ -50,7 +51,8 @@ export function OverviewTab({ projectId, projectName }: Props) {
     ]).then(([fullBays, stationFile]) => {
       setBays(fullBays);
       setStationSignals(stationFile.station.signals);
-    }).finally(() => setLoading(false));
+    }).catch(() => setError('Gat ekki hlaðið gögnum. Reyndu aftur.'))
+      .finally(() => setLoading(false));
   }, [api, projectId]);
 
   const rows: Row[] = useMemo(() => {
@@ -124,6 +126,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
   };
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (error) return <p style={{ color: 'var(--danger)' }}>{error}</p>;
 
   const cell: React.CSSProperties = {
     padding: '5px 8px', borderBottom: '1px solid var(--line-muted)',
@@ -232,11 +235,11 @@ export function OverviewTab({ projectId, projectName }: Props) {
               const fatColor = sig.fat_result === 'PASS' ? 'var(--success)' : sig.fat_result === 'FAIL' ? 'var(--danger)' : 'var(--text)';
               const satColor = sig.sat_result === 'PASS' ? 'var(--success)' : sig.sat_result === 'FAIL' ? 'var(--danger)' : 'var(--text)';
               return (
-                <tr key={`${sig.id}-${i}`} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                <tr key={sig.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
                   <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600 }}>
                     {r.source.kind === 'bay' ? (
                       <button type="button"
-                        onClick={() => navigate(`/projects/${projectId}/bays/${r.source.kind === 'bay' ? r.source.bayId : ''}`)}
+                        onClick={() => { if (r.source.kind === 'bay') navigate(`/projects/${projectId}/bays/${r.source.bayId}`); }}
                         style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, font: 'inherit' }}>
                         {r.source.displayId}
                       </button>
