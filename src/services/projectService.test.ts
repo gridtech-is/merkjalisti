@@ -7,7 +7,7 @@ import {
   saveProject,
   type ProjectFiles,
 } from './projectService';
-import type { Project, Equipment } from '../types';
+import type { Project, Equipment, BaySignal } from '../types';
 
 // Mock GitHubApi
 const mockApi = {
@@ -17,6 +17,39 @@ const mockApi = {
 };
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('loadProject — station_signals.json migration', () => {
+  it('wraps legacy array shape into StationSignals object', async () => {
+    const legacySignals: BaySignal[] = [];
+    mockApi.readJson.mockImplementation((path: string) => {
+      if (path.endsWith('station_signals.json')) return Promise.resolve({ data: legacySignals, sha: 'sha-stn' });
+      if (path.endsWith('project.json')) return Promise.resolve({ data: { id: 'p1', name: 'X', description: '', created: '', phase: 'DESIGN', review: null }, sha: 'sha-p' });
+      if (path.endsWith('equipment.json')) return Promise.resolve({ data: [], sha: 'sha-eq' });
+      if (path.endsWith('changelog.json')) return Promise.resolve({ data: [], sha: 'sha-cl' });
+      if (path.endsWith('testing.json')) return Promise.resolve({ data: { fat_started: null, fat_completed: null, sat_started: null, sat_completed: null, entries: [] }, sha: 'sha-t' });
+      return Promise.reject(new Error('unexpected path: ' + path));
+    });
+
+    const result = await loadProject(mockApi as never, 'p1');
+    expect(result.stationSignals).toEqual({ status: 'DRAFT', review: null, signals: [] });
+    expect(result.stationSignalsSha).toBe('sha-stn');
+  });
+
+  it('passes through new StationSignals object shape unchanged', async () => {
+    const newShape = { status: 'IN_REVIEW' as const, review: null, signals: [] };
+    mockApi.readJson.mockImplementation((path: string) => {
+      if (path.endsWith('station_signals.json')) return Promise.resolve({ data: newShape, sha: 'sha-stn' });
+      if (path.endsWith('project.json')) return Promise.resolve({ data: { id: 'p1', name: 'X', description: '', created: '', phase: 'DESIGN', review: null }, sha: 'sha-p' });
+      if (path.endsWith('equipment.json')) return Promise.resolve({ data: [], sha: 'sha-eq' });
+      if (path.endsWith('changelog.json')) return Promise.resolve({ data: [], sha: 'sha-cl' });
+      if (path.endsWith('testing.json')) return Promise.resolve({ data: { fat_started: null, fat_completed: null, sat_started: null, sat_completed: null, entries: [] }, sha: 'sha-t' });
+      return Promise.reject(new Error('unexpected path: ' + path));
+    });
+
+    const result = await loadProject(mockApi as never, 'p1');
+    expect(result.stationSignals).toEqual(newShape);
+  });
+});
 
 describe('createProject', () => {
   it('writes project.json, equipment.json, station_signals.json, changelog.json, testing.json', async () => {

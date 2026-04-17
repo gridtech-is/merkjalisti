@@ -181,6 +181,14 @@ export interface Bay {
   review: BayReview | null;
 }
 
+// ─── Station signals ───────────────────────────────────────────────────────
+
+export interface StationSignals {
+  status: BayStatus;
+  review: BayReview | null;
+  signals: BaySignal[];
+}
+
 // ─── Changelog ─────────────────────────────────────────────────────────────
 
 export type ChangeType =
@@ -201,7 +209,7 @@ export interface ChangeEntry {
   phase: ProjectPhase;
   type: ChangeType;
   target_id: string;
-  target_type: 'signal' | 'bay' | 'project' | 'equipment';
+  target_type: 'signal' | 'bay' | 'project' | 'equipment' | 'station';
   field: string | null;
   old_value: string | null;
   new_value: string | null;

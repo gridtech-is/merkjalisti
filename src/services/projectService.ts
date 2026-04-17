@@ -1,7 +1,7 @@
 // src/services/projectService.ts
 import type { GitHubApi } from '../github/api';
 import type {
-  Project, Equipment, BaySignal, ChangeEntry, Testing, ProjectPhase
+  Project, Equipment, BaySignal, ChangeEntry, Testing, ProjectPhase, StationSignals
 } from '../types';
 
 export interface ProjectFiles {
@@ -9,7 +9,7 @@ export interface ProjectFiles {
   projectSha: string;
   equipment: Equipment[];
   equipmentSha: string;
-  stationSignals: BaySignal[];
+  stationSignals: StationSignals;
   stationSignalsSha: string;
   changelog: ChangeEntry[];
   changelogSha: string;
@@ -37,7 +37,7 @@ export async function createProject(
     id, name, description: '', created: now, phase: 'DESIGN', review: null,
   };
   const equipment: Equipment[] = [];
-  const stationSignals: BaySignal[] = [];
+  const stationSignals: StationSignals = { status: 'DRAFT', review: null, signals: [] };
   const changelog: ChangeEntry[] = [{
     id: uuid(), timestamp: now, user: createdBy, phase: 'DESIGN',
     type: 'PHASE_CHANGED', target_id: id, target_type: 'project',
@@ -90,14 +90,17 @@ export async function loadProject(api: GitHubApi, id: string): Promise<ProjectFi
   const [p, e, s, c, t] = await Promise.all([
     api.readJson<Project>(`${base}/project.json`),
     api.readJson<Equipment[]>(`${base}/equipment.json`),
-    api.readJson<BaySignal[]>(`${base}/station_signals.json`),
+    api.readJson<unknown>(`${base}/station_signals.json`),
     api.readJson<ChangeEntry[]>(`${base}/changelog.json`),
     api.readJson<Testing>(`${base}/testing.json`),
   ]);
+  const stationSignals: StationSignals = Array.isArray(s.data)
+    ? { status: 'DRAFT', review: null, signals: s.data as BaySignal[] }
+    : s.data as StationSignals;
   return {
     project: p.data, projectSha: p.sha,
     equipment: e.data, equipmentSha: e.sha,
-    stationSignals: s.data, stationSignalsSha: s.sha,
+    stationSignals, stationSignalsSha: s.sha,
     changelog: c.data, changelogSha: c.sha,
     testing: t.data, testingSha: t.sha,
   };
