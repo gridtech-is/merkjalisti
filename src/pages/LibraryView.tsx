@@ -44,6 +44,7 @@ function SignalsTab() {
   const [newOpen, setNewOpen] = useState(false);
   const [newEntry, setNewEntry] = useState<Partial<SignalLibraryEntry>>(emptyNew());
   const [newSaving, setNewSaving] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [editEntry, setEditEntry] = useState<Partial<SignalLibraryEntry> | null>(null);
   const [editOrigCode, setEditOrigCode] = useState<string | null>(null);
 
@@ -112,7 +113,7 @@ function SignalsTab() {
 
   const handleSaveEdit = async () => {
     if (!editEntry?.id || !editEntry.code?.trim() || !editEntry.name_is?.trim()) return;
-    setNewSaving(true);
+    setEditSaving(true);
     try {
       const updated = buildEntry(editEntry, editEntry.id);
       const newLib = library.map(e => e.id === updated.id ? updated : e);
@@ -121,7 +122,7 @@ function SignalsTab() {
       setLibSha(sha);
       setEditEntry(null);
       setEditOrigCode(null);
-    } finally { setNewSaving(false); }
+    } finally { setEditSaving(false); }
   };
 
   const toSignal = (e: SignalLibraryEntry, eqCode: string): BaySignal => ({
@@ -403,8 +404,8 @@ function SignalsTab() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
                 <Button variant="ghost" onClick={onClose}>Hætta við</Button>
-                <Button onClick={onSave} disabled={!form.code?.trim() || !form.name_is?.trim() || newSaving}>
-                  {newSaving ? 'Vista...' : isEdit ? 'Vista breytingar' : 'Vista í safn'}
+                <Button onClick={onSave} disabled={!form.code?.trim() || !form.name_is?.trim() || (isEdit ? editSaving : newSaving)}>
+                  {(isEdit ? editSaving : newSaving) ? 'Vista...' : isEdit ? 'Vista breytingar' : 'Vista í safn'}
                 </Button>
               </div>
             </div>
