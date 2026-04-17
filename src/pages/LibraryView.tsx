@@ -417,7 +417,77 @@ function SignalsTab() {
 }
 
 function StatesTab() {
-  return <p style={{ color: 'var(--muted)' }}>Stöður — kemur bráðlega</p>;
+  const { api } = useApi();
+  const [states, setStates] = useState<import('../types').SignalState[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<'is' | 'en'>('is');
+
+  useEffect(() => {
+    api.readJson<import('../types').SignalState[]>('data/signal_states.json')
+      .then(({ data }) => setStates(data))
+      .finally(() => setLoading(false));
+  }, [api]);
+
+  const cell: React.CSSProperties = {
+    padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px', verticalAlign: 'top',
+  };
+  const head: React.CSSProperties = {
+    ...cell, fontWeight: 600, color: 'var(--text-secondary)',
+    background: 'var(--surface-alt)', whiteSpace: 'nowrap',
+    position: 'sticky', top: 0, zIndex: 1,
+  };
+
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{states.length} stöðuflokkar</span>
+        <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
+          {(['is', 'en'] as const).map(l => (
+            <button key={l} type="button" onClick={() => setLang(l)}
+              style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 600, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                background: lang === l ? 'var(--accent)' : 'transparent',
+                color: lang === l ? '#fff' : 'var(--text-secondary)' }}>
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {['Tegund', '00', '01', '10', '11'].map(h => (
+                <th key={h} style={head}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {states.length === 0 && (
+              <tr><td colSpan={5} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engar stöður</td></tr>
+            )}
+            {states.map((s, i) => (
+              <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>
+                  {s.type ?? '—'}
+                </td>
+                {(['00', '01', '10', '11'] as const).map(k => {
+                  const entry = s.states[k];
+                  const text = entry ? (lang === 'is' ? entry.is : entry.en) : null;
+                  return (
+                    <td key={k} style={{ ...cell, color: text ? 'var(--text)' : 'var(--muted)', minWidth: '120px' }}>
+                      {text ?? '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function TemplatesTab() {
