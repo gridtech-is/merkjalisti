@@ -27,7 +27,7 @@ interface Props {
 export function EquipmentList({ equipment, onChange }: Props) {
   const add = () => {
     onChange([...equipment, {
-      id: uuid(), type: 'Aflrofi', code: '', ied_names: [], description: '',
+      id: uuid(), category: 'apparatus', type: 'Aflrofi', code: '', ied_name: null, manufacturer: null, model: null, template_id: null, description: '',
     }]);
   };
 
@@ -61,7 +61,7 @@ export function EquipmentList({ equipment, onChange }: Props) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
             <Select
               label="Tegund"
-              value={eq.type}
+              value={eq.type ?? 'Annað'}
               onChange={v => update(eq.id, { type: v as EquipmentType })}
               options={EQUIPMENT_TYPES}
             />
@@ -75,8 +75,8 @@ export function EquipmentList({ equipment, onChange }: Props) {
           </div>
           <Input
             label="IED nafn (t.d. 55E00BCF1)"
-            value={eq.ied_names[0] ?? ''}
-            onChange={v => update(eq.id, { ied_names: v ? [v] : [] })}
+            value={eq.ied_name ?? ''}
+            onChange={v => update(eq.id, { ied_name: v || null })}
             placeholder="55E00BCF1"
             hint="Má bæta við fleiri síðar"
           />

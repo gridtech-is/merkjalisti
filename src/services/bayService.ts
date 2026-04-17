@@ -195,7 +195,7 @@ export async function approveBay(
   const msg = `[REVIEW] Samþykkt: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, updated, bayFile.sha, msg);
   await appendChange(api, projectId, {
-    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
+    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_APPROVED',
     target_id: bayFile.bay.id, target_type: 'bay',
     field: null, old_value: 'IN_REVIEW', new_value: 'LOCKED',
     comment: `Reitur samþykktur: ${bayFile.bay.display_id}`,
@@ -227,7 +227,7 @@ export async function rejectBay(
   const msg = `[REVIEW] Hafnað: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, updated, bayFile.sha, msg);
   await appendChange(api, projectId, {
-    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_ADDED',
+    user: reviewedBy, phase: 'REVIEW', type: 'REVIEW_REJECTED',
     target_id: bayFile.bay.id, target_type: 'bay',
     field: null, old_value: 'IN_REVIEW', new_value: 'DRAFT',
     comment: `Reitur hafnaður: ${bayFile.bay.display_id}. ${comment}`,

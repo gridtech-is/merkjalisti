@@ -72,6 +72,7 @@ export type ApparatusType =
   | 'Skilrofi'
   | 'Jarðrofi'
   | 'Spennir'
+  | 'Vörn'
   | 'Stjórnbúnaður'
   | 'Annað';
 
@@ -188,6 +189,8 @@ export type ChangeType =
   | 'FIELD_CHANGED'
   | 'PHASE_CHANGED'
   | 'REVIEW_ADDED'
+  | 'REVIEW_APPROVED'
+  | 'REVIEW_REJECTED'
   | 'FAT_TESTED'
   | 'SAT_TESTED';
 
