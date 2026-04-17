@@ -1,11 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom';
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Verkefni', icon: '⊞', end: true },
-  { to: '/library', label: 'Library', icon: '◈', end: false },
-];
+import { NavLink, Outlet, useMatch } from 'react-router-dom';
 
 export function AppShell() {
+  const projectMatch = useMatch('/projects/:projectId/*');
+  const projectId = projectMatch?.params.projectId;
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <nav style={{
@@ -27,32 +25,42 @@ export function AppShell() {
             Merkjalisti
           </span>
         </div>
-        {NAV_ITEMS.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              padding: '6px var(--space-3)',
-              borderRadius: 'var(--radius-sm)',
-              color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-              background: isActive ? 'var(--accent-focus)' : 'transparent',
-              textDecoration: 'none',
-              fontSize: '13px',
-              fontWeight: isActive ? 600 : 400,
-            })}
-          >
-            <span>{item.icon}</span>
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
+
+        <NavLink to="/" end style={navStyle}>
+          <span>⊞</span><span>Verkefni</span>
+        </NavLink>
+
+        <NavLink to="/library" style={navStyle}>
+          <span>◈</span><span>Library</span>
+        </NavLink>
+
+        {projectId && (
+          <>
+            <div style={{ height: '1px', background: 'var(--line)', margin: 'var(--space-2) 0' }} />
+            <NavLink to={`/projects/${projectId}`} end style={navStyle}>
+              <span>⬡</span><span>Reitir</span>
+            </NavLink>
+          </>
+        )}
       </nav>
       <main style={{ flex: 1, overflow: 'auto', padding: 'var(--space-6)' }}>
         <Outlet />
       </main>
     </div>
   );
+}
+
+function navStyle({ isActive }: { isActive: boolean }): React.CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    padding: '6px var(--space-3)',
+    borderRadius: 'var(--radius-sm)',
+    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+    background: isActive ? 'var(--accent-focus)' : 'transparent',
+    textDecoration: 'none',
+    fontSize: '13px',
+    fontWeight: isActive ? 600 : 400,
+  };
 }
