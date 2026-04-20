@@ -57,6 +57,7 @@ export interface ProjectReview {
 export interface Project {
   id: string;
   name: string;
+  station_number: string;
   description: string;
   created: string;
   phase: ProjectPhase;
