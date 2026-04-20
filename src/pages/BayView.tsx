@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { loadBay, saveBay, saveBayTemplate, sendBayForReview, approveBay, rejectBay, type BayFile } from '../services/bayService';
+import { loadProject } from '../services/projectService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
@@ -31,6 +32,7 @@ export function BayView() {
   const [testPhase, setTestPhase] = useState<'FAT' | 'SAT' | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [reviewSending, setReviewSending] = useState(false);
+  const [stationNumber, setStationNumber] = useState<string>('');
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -54,6 +56,13 @@ export function BayView() {
       setSignalStates(states);
     }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadProject(api, projectId).then(files => {
+      setStationNumber(files.project.station_number);
+    }).catch(() => {});
+  }, [api, projectId]);
 
   const bayEquipment = bayFile
     ? allEquipment.filter(e => bayFile.bay.equipment_ids.includes(e.id))
@@ -238,7 +247,7 @@ export function BayView() {
     <div>
       <div style={{ marginBottom: 'var(--space-2)' }}>
         <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}`)}>
-          ← {bay.station} verkefni
+          ← {stationNumber} verkefni
         </Button>
       </div>
 
@@ -249,7 +258,7 @@ export function BayView() {
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{bay.display_id}</h1>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {bay.station} / {bay.voltage_level} / {bay.bay_name} — {bay.signals.length} merki
+            {stationNumber} / {bay.voltage_level} / {bay.bay_name} — {bay.signals.length} merki
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>

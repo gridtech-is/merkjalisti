@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { createBay, listBayTemplates } from '../services/bayService';
+import { loadProject } from '../services/projectService';
 import { Card, Button, Input, Select } from '../components/ui';
 import type { BaySignal, BayTemplate } from '../types';
 
@@ -9,7 +10,7 @@ export function NewBay() {
   const { projectId } = useParams<{ projectId: string }>();
   const { api, userName } = useApi();
   const navigate = useNavigate();
-  const [station, setStation] = useState('');
+  const [stationNumber, setStationNumber] = useState('');
   const [voltageLevel, setVoltageLevel] = useState('J');
   const [bayName, setBayName] = useState('');
   const [templates, setTemplates] = useState<BayTemplate[]>([]);
@@ -17,17 +18,19 @@ export function NewBay() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Load available bay templates from GitHub
   useEffect(() => {
+    if (!projectId) return;
+    loadProject(api, projectId).then(files => {
+      setStationNumber(files.project.station_number);
+    }).catch(() => {});
     listBayTemplates(api).then(setTemplates).catch(() => {});
-  }, [api]);
+  }, [api, projectId]);
 
   const handleCreate = async () => {
-    if (!station.trim() || !bayName.trim() || !projectId) return;
+    if (!stationNumber || !bayName.trim() || !projectId) return;
     setSaving(true);
     setError('');
     try {
-      // Load signals from template if selected
       let signals: BaySignal[] = [];
       if (selectedTemplate) {
         const tmpl = templates.find(t => t.template_name === selectedTemplate);
@@ -39,7 +42,7 @@ export function NewBay() {
         }
       }
       const { bay } = await createBay(
-        api, projectId, station.trim(), voltageLevel, bayName.trim().toUpperCase(), signals, userName
+        api, projectId, stationNumber, voltageLevel, bayName.trim().toUpperCase(), signals, userName
       );
       navigate(`/projects/${projectId}/bays/${bay.id}`);
     } catch {
@@ -48,7 +51,7 @@ export function NewBay() {
     }
   };
 
-  const displayId = station && bayName ? `${station}${bayName.toUpperCase()}` : '';
+  const displayId = stationNumber && bayName ? `${stationNumber}${bayName.toUpperCase()}` : '';
 
   return (
     <div style={{ maxWidth: '560px' }}>
@@ -62,14 +65,7 @@ export function NewBay() {
       </h1>
       <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', gap: 'var(--space-3)' }}>
-            <Input
-              label="Stöðarnúmer"
-              value={station}
-              onChange={setStation}
-              placeholder="55"
-              required
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 'var(--space-3)' }}>
             <Input
               label="Spennutig"
               value={voltageLevel}
@@ -118,7 +114,7 @@ export function NewBay() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={saving || !station.trim() || !bayName.trim()}
+              disabled={saving || !stationNumber || !bayName.trim()}
             >
               {saving ? 'Vista...' : 'Búa til reit'}
             </Button>

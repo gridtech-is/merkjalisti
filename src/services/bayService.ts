@@ -18,7 +18,7 @@ export interface BayFile {
 export async function createBay(
   api: GitHubApi,
   projectId: string,
-  station: string,
+  stationNumber: string,
   voltageLevel: string,
   bayName: string,
   signals: BaySignal[],
@@ -27,10 +27,9 @@ export async function createBay(
   const id = uuid();
   const bay: Bay = {
     id,
-    station,
     voltage_level: voltageLevel,
     bay_name: bayName,
-    display_id: `${station}${bayName}`,
+    display_id: `${stationNumber}${bayName}`,
     equipment_ids: [],
     signals: signals.map(s => ({
       ...s,
@@ -97,7 +96,6 @@ export async function saveBayTemplate(
 ): Promise<void> {
   const template: BayTemplate = {
     template_name: templateName,
-    station: bay.station,
     voltage_level: bay.voltage_level,
     bay_name: bay.bay_name,
     display_id: bay.display_id,

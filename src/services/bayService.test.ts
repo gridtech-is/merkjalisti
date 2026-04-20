@@ -12,7 +12,7 @@ const mockApi = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('createBay', () => {
-  it('writes bay json and returns bay with given signals', async () => {
+  it('writes bay json with station_number-derived display_id', async () => {
     mockApi.writeJson.mockResolvedValue('sha1');
     const result = await createBay(mockApi as never, 'proj-123', '55', 'J', 'E00', [], 'Teddi');
 
@@ -20,8 +20,9 @@ describe('createBay', () => {
     const [path, data] = mockApi.writeJson.mock.calls[0] as [string, Bay];
     expect(path).toMatch(/^projects\/proj-123\/bays\//);
     expect(data.display_id).toBe('55E00');
-    expect(data.station).toBe('55');
     expect(data.bay_name).toBe('E00');
+    // station field should no longer exist
+    expect('station' in data).toBe(false);
   });
 });
 
@@ -36,7 +37,7 @@ describe('listBays', () => {
     const bayId = '550e8400-e29b-41d4-a716-446655440001';
     mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
     mockApi.readJson.mockResolvedValue({
-      data: { id: bayId, station: '55', voltage_level: 'J', bay_name: 'E00', display_id: '55E00', equipment_ids: [], signals: [] } as Bay,
+      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', equipment_ids: [], signals: [] } as Bay,
       sha: 'sha1',
     });
 

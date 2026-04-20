@@ -172,7 +172,6 @@ export interface BayReview {
 
 export interface Bay {
   id: string;
-  station: string;
   voltage_level: string;
   bay_name: string;
   display_id: string;
@@ -242,7 +241,6 @@ export interface Testing {
 
 export interface BayTemplate {
   template_name: string;
-  station: string;
   voltage_level: string;
   bay_name: string;
   display_id: string;
