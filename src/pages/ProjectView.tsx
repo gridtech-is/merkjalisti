@@ -104,6 +104,7 @@ export function ProjectView() {
   const [sendingReview, setSendingReview] = useState(false);
   const [stationStatus, setStationStatus] = useState<BayStatus | null>(null);
   const [savingStation, setSavingStation] = useState(false);
+  const [stationDraft, setStationDraft] = useState('');
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -126,6 +127,7 @@ export function ProjectView() {
     ]).then(([files, bayList, { data: tmplData }, stationFile]) => {
       setProject(files.project);
       setProjectSha(files.projectSha);
+      setStationDraft(files.project.station_number);
       setEquipment(files.equipment);
       setEquipmentSha(files.equipmentSha);
       setBays(bayList);
@@ -149,24 +151,43 @@ export function ProjectView() {
     setEquipmentSha(newSha);
   };
 
-  const handleStationChange = async (raw: string) => {
+  const commitStationNumber = async () => {
     if (!project || !projectId) return;
-    const v = raw.replace(/\D/g, '').slice(0, 10);
-    if (!v || v === project.station_number) return;
+    const next = stationDraft;
+    if (!next || next === project.station_number) {
+      // Reset draft to committed value (in case user cleared and blurred)
+      setStationDraft(project.station_number);
+      return;
+    }
     setSavingStation(true);
+    const previous = project.station_number;
     try {
-      const updated: Project = { ...project, station_number: v };
+      const updated: Project = { ...project, station_number: next };
       const newSha = await api.writeJson(
         `projects/${projectId}/project.json`, updated, projectSha,
-        `Uppfæra stöðvar-númer: ${project.station_number} → ${v}`
+        `Uppfæra stöðvarnúmer: ${previous} → ${next}`
       );
       setProject(updated);
       setProjectSha(newSha);
-      await renameStation(api, projectId, v);
+      await renameStation(api, projectId, next);
       const bayList = await listBays(api, projectId);
       setBays(bayList);
-    } catch {
-      alert('Villa við að uppfæra stöðvar-númer.');
+    } catch (err) {
+      console.error('Failed to update station number', err);
+      alert('Villa við að uppfæra stöðvarnúmer. Endurhlaða verkefnið til að sjá stöðu.');
+      // Reload to reflect actual server state after partial failure
+      try {
+        const [files, bayList] = await Promise.all([
+          loadProject(api, projectId),
+          listBays(api, projectId),
+        ]);
+        setProject(files.project);
+        setProjectSha(files.projectSha);
+        setStationDraft(files.project.station_number);
+        setBays(bayList);
+      } catch {
+        // ignore secondary failure
+      }
     } finally {
       setSavingStation(false);
     }
@@ -307,9 +328,12 @@ export function ProjectView() {
             <input
               type="text"
               inputMode="numeric"
-              value={project.station_number}
-              onChange={e => handleStationChange(e.target.value)}
+              value={stationDraft}
+              onChange={e => setStationDraft(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              onBlur={commitStationNumber}
+              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
               disabled={savingStation}
+              title="Breyting vistast þegar reitur tapar fókus"
               style={{
                 width: '80px', padding: '2px 6px', fontSize: '12px',
                 background: 'var(--surface-alt)', border: '1px solid var(--line)',
