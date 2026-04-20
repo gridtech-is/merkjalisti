@@ -14,16 +14,17 @@ export function NewProject() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
+  const [stationNumber, setStationNumber] = useState('');
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !stationNumber.trim()) return;
     setSaving(true);
     setError('');
     try {
-      const files = await createProject(api, name.trim(), userName);
+      const files = await createProject(api, name.trim(), stationNumber.trim(), userName);
       if (equipment.length > 0) {
         await saveProject(api, { ...files, equipment });
       }
@@ -69,11 +70,18 @@ export function NewProject() {
               placeholder="t.d. Hamrahlíð 66kV"
               required
             />
+            <Input
+              label="Stöðvar númer"
+              value={stationNumber}
+              onChange={v => setStationNumber(v.replace(/\D/g, '').slice(0, 10))}
+              placeholder="t.d. 55"
+              required
+            />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
               <Button variant="ghost" onClick={() => navigate('/')}>Hætta við</Button>
               <Button
                 onClick={() => setStep('equipment')}
-                disabled={!name.trim()}
+                disabled={!name.trim() || !stationNumber.trim()}
               >
                 Áfram →
               </Button>
