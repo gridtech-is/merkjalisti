@@ -71,7 +71,7 @@ export function NewProject() {
               required
             />
             <Input
-              label="Stöðvar númer"
+              label="Stöðvarnúmer"
               value={stationNumber}
               onChange={v => setStationNumber(v.replace(/\D/g, '').slice(0, 10))}
               placeholder="t.d. 55"
