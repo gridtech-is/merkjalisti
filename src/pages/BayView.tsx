@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { loadBay, saveBay, saveBayTemplate, sendBayForReview, approveBay, rejectBay, type BayFile } from '../services/bayService';
-import { loadProject } from '../services/projectService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
@@ -13,7 +12,7 @@ import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Bay, Equipment, SignalLibraryEntry, SignalState } from '../types';
+import type { BaySignal, Bay, Equipment, Project, SignalLibraryEntry, SignalState } from '../types';
 
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
@@ -48,21 +47,16 @@ export function BayView() {
       api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
       api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
       api.readJson<SignalState[]>('data/signal_states.json'),
-    ]).then(([f, { data: eq, sha: eqSha }, { data: lib }, { data: states }]) => {
+      api.readJson<Project>(`projects/${projectId}/project.json`),
+    ]).then(([f, { data: eq, sha: eqSha }, { data: lib }, { data: states }, { data: project }]) => {
       setBayFile(f);
       setAllEquipment(eq);
       setEquipmentSha(eqSha);
       setSignalLibrary(lib);
       setSignalStates(states);
+      setStationNumber(project.station_number);
     }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    loadProject(api, projectId).then(files => {
-      setStationNumber(files.project.station_number);
-    }).catch(() => {});
-  }, [api, projectId]);
 
   const bayEquipment = bayFile
     ? allEquipment.filter(e => bayFile.bay.equipment_ids.includes(e.id))

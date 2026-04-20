@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { createBay, listBayTemplates } from '../services/bayService';
-import { loadProject } from '../services/projectService';
 import { Card, Button, Input, Select } from '../components/ui';
-import type { BaySignal, BayTemplate } from '../types';
+import type { BaySignal, BayTemplate, Project } from '../types';
 
 export function NewBay() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -20,9 +19,9 @@ export function NewBay() {
 
   useEffect(() => {
     if (!projectId) return;
-    loadProject(api, projectId).then(files => {
-      setStationNumber(files.project.station_number);
-    }).catch(() => {});
+    api.readJson<Project>(`projects/${projectId}/project.json`)
+      .then(({ data }) => setStationNumber(data.station_number))
+      .catch(() => setError('Gat ekki sótt stöðvarnúmer verkefnis.'));
     listBayTemplates(api).then(setTemplates).catch(() => {});
   }, [api, projectId]);
 
