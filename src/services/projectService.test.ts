@@ -4,8 +4,6 @@ import {
   createProject,
   listProjects,
   loadProject,
-  saveProject,
-  type ProjectFiles,
 } from './projectService';
 import type { Project, Equipment, BaySignal } from '../types';
 
@@ -63,12 +61,12 @@ describe('createProject', () => {
     );
 
     expect(mockApi.writeJson).toHaveBeenCalledTimes(5);
-    const paths = mockApi.writeJson.mock.calls.map((c: unknown[]) => c[0]);
-    expect(paths.some((p: string) => p.endsWith('project.json'))).toBe(true);
-    expect(paths.some((p: string) => p.endsWith('equipment.json'))).toBe(true);
-    expect(paths.some((p: string) => p.endsWith('station_signals.json'))).toBe(true);
-    expect(paths.some((p: string) => p.endsWith('changelog.json'))).toBe(true);
-    expect(paths.some((p: string) => p.endsWith('testing.json'))).toBe(true);
+    const paths = mockApi.writeJson.mock.calls.map((c: unknown[]) => c[0] as string);
+    expect(paths.some(p => p.endsWith('project.json'))).toBe(true);
+    expect(paths.some(p => p.endsWith('equipment.json'))).toBe(true);
+    expect(paths.some(p => p.endsWith('station_signals.json'))).toBe(true);
+    expect(paths.some(p => p.endsWith('changelog.json'))).toBe(true);
+    expect(paths.some(p => p.endsWith('testing.json'))).toBe(true);
 
     expect(result.project.name).toBe('Hamrahlíð 66kV');
     expect(result.project.station_number).toBe('55');
