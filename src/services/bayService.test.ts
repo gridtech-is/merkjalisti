@@ -1,6 +1,6 @@
 // src/services/bayService.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createBay, listBays, loadBay, saveBay } from './bayService';
+import { createBay, listBays, loadBay, saveBay, renameStation } from './bayService';
 import type { Bay } from '../types';
 
 const mockApi = {
@@ -44,5 +44,30 @@ describe('listBays', () => {
     const result = await listBays(mockApi as never, 'proj-123');
     expect(result).toHaveLength(1);
     expect(result[0].display_id).toBe('55E00');
+  });
+});
+
+describe('renameStation', () => {
+  it('updates display_id on all bays for the project', async () => {
+    const bayId = '550e8400-e29b-41d4-a716-446655440002';
+    mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
+    mockApi.readJson.mockResolvedValue({
+      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', equipment_ids: [], signals: [] } as Bay,
+      sha: 'sha-old',
+    });
+    mockApi.writeJson.mockResolvedValue('sha-new');
+
+    await renameStation(mockApi as never, 'proj-123', '66');
+
+    expect(mockApi.writeJson).toHaveBeenCalledOnce();
+    const [path, data] = mockApi.writeJson.mock.calls[0] as [string, Bay];
+    expect(path).toBe(`projects/proj-123/bays/${bayId}.json`);
+    expect(data.display_id).toBe('66E00');
+  });
+
+  it('does nothing when project has no bays', async () => {
+    mockApi.listDirectory.mockResolvedValue([]);
+    await renameStation(mockApi as never, 'proj-123', '66');
+    expect(mockApi.writeJson).not.toHaveBeenCalled();
   });
 });

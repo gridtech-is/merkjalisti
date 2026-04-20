@@ -5,7 +5,7 @@ import { useApi } from '../context/ApiContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
-import { listBays, loadBay, sendBayForReview } from '../services/bayService';
+import { listBays, loadBay, renameStation, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase, BayStatus } from '../types';
@@ -103,6 +103,7 @@ export function ProjectView() {
   const [projectSha, setProjectSha] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
   const [stationStatus, setStationStatus] = useState<BayStatus | null>(null);
+  const [savingStation, setSavingStation] = useState(false);
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -146,6 +147,29 @@ export function ProjectView() {
     const newSha = await api.writeJson(`projects/${projectId}/equipment.json`, updated, equipmentSha, msg);
     setEquipment(updated);
     setEquipmentSha(newSha);
+  };
+
+  const handleStationChange = async (raw: string) => {
+    if (!project || !projectId) return;
+    const v = raw.replace(/\D/g, '').slice(0, 10);
+    if (!v || v === project.station_number) return;
+    setSavingStation(true);
+    try {
+      const updated: Project = { ...project, station_number: v };
+      const newSha = await api.writeJson(
+        `projects/${projectId}/project.json`, updated, projectSha,
+        `Uppfæra stöðvar-númer: ${project.station_number} → ${v}`
+      );
+      setProject(updated);
+      setProjectSha(newSha);
+      await renameStation(api, projectId, v);
+      const bayList = await listBays(api, projectId);
+      setBays(bayList);
+    } catch {
+      alert('Villa við að uppfæra stöðvar-númer.');
+    } finally {
+      setSavingStation(false);
+    }
   };
 
   const handleAddApparatus = async () => {
@@ -278,8 +302,23 @@ export function ProjectView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{project.name}</h1>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {apparatus.length} búnaður · {ieds.length} IED · {bays.length} reitir
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '2px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--muted)' }}>Stöðvarnúmer:</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={project.station_number}
+              onChange={e => handleStationChange(e.target.value)}
+              disabled={savingStation}
+              style={{
+                width: '80px', padding: '2px 6px', fontSize: '12px',
+                background: 'var(--surface-alt)', border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+              }}
+            />
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              · {apparatus.length} búnaður · {ieds.length} IED · {bays.length} reitir
+            </span>
           </div>
         </div>
         <Badge phase={project.phase}>{project.phase}</Badge>

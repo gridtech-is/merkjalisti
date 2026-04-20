@@ -232,3 +232,26 @@ export async function rejectBay(
   });
   return { bay: updated, sha };
 }
+
+export async function renameStation(
+  api: GitHubApi,
+  projectId: string,
+  newStationNumber: string
+): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await api.listDirectory(`projects/${projectId}/bays`);
+  } catch {
+    return;
+  }
+  const jsonFiles = entries.filter(e => e.endsWith('.json'));
+  for (const file of jsonFiles) {
+    const path = `projects/${projectId}/bays/${file}`;
+    const { data: bay, sha } = await api.readJson<Bay>(path);
+    const updated: Bay = {
+      ...bay,
+      display_id: `${newStationNumber}${bay.bay_name}`,
+    };
+    await api.writeJson(path, updated, sha, `Uppfæra display_id eftir stöðvar-númer breytingu`);
+  }
+}
