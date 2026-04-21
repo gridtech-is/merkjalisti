@@ -21,10 +21,24 @@ describe('undoPush', () => {
   });
 
   it('caps past at maxSize', () => {
-    let s = createUndoState([0]);
-    for (let i = 1; i <= 25; i++) s = undoPush(s, [i], 20);
+    let s = createUndoState([0], 20);
+    for (let i = 1; i <= 25; i++) s = undoPush(s, [i]);
     expect(s.past.length).toBe(20);
     expect(s.past[0]).toEqual([5]);
+  });
+
+  it('respects custom maxSize stored in state', () => {
+    let s = createUndoState([0], 3);
+    s = undoPush(s, [1]);
+    s = undoPush(s, [2]);
+    s = undoPush(s, [3]);
+    s = undoPush(s, [4]); // oldest ([0]) should be dropped
+    expect(s.past.length).toBe(3);
+    expect(s.past[0]).toEqual([1]);
+    const s2 = undoUndo(s); // undo to [3]
+    const s3 = undoUndo(s2); // undo to [2]
+    const s4 = undoUndo(s3); // undo to [1]
+    expect(s4.present).toEqual([1]);
   });
 });
 
