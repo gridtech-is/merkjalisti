@@ -65,11 +65,11 @@ export function BayView() {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        handleUndo();
+        handleUndoRef.current();
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
-        handleRedo();
+        handleRedoRef.current();
       }
     };
     window.addEventListener('keydown', handler);
@@ -133,6 +133,7 @@ export function BayView() {
       for (const [field, newVal] of Object.entries(patch) as [string, unknown][]) {
         const oldVal = (oldSig as unknown as Record<string, unknown>)[field];
         if (oldVal === newVal) continue;
+        if (typeof oldVal === 'object' || typeof newVal === 'object') continue;
         appendChange(api, projectId, {
           user: userName,
           phase: 'DESIGN',
@@ -177,6 +178,9 @@ export function BayView() {
     setIsDirty(true);
   };
 
+  const handleUndoRef = useRef<() => void>(() => {});
+  const handleRedoRef = useRef<() => void>(() => {});
+
   const handleUndo = () => {
     const next = undoUndo(undoState);
     if (next === undoState) return;
@@ -192,6 +196,9 @@ export function BayView() {
     setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
     setIsDirty(true);
   };
+
+  handleUndoRef.current = handleUndo;
+  handleRedoRef.current = handleRedo;
 
   const commitChanges = async () => {
     const current = bayFileRef.current;
