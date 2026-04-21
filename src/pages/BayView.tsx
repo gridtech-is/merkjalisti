@@ -13,6 +13,7 @@ import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
 import type { BaySignal, Bay, Equipment, Project, SignalLibraryEntry, SignalState } from '../types';
+import { createUndoState, undoPush, undoUndo, undoRedo, type UndoState } from '../utils/undoStack';
 
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
@@ -32,6 +33,7 @@ export function BayView() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [reviewSending, setReviewSending] = useState(false);
   const [stationNumber, setStationNumber] = useState<string>('');
+  const [undoState, setUndoState] = useState<UndoState<BaySignal[]>>(() => createUndoState([]));
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -50,6 +52,7 @@ export function BayView() {
       api.readJson<Project>(`projects/${projectId}/project.json`),
     ]).then(([f, { data: eq, sha: eqSha }, { data: lib }, { data: states }, { data: project }]) => {
       setBayFile(f);
+      setUndoState(createUndoState(f.bay.signals));
       setAllEquipment(eq);
       setEquipmentSha(eqSha);
       setSignalLibrary(lib);
@@ -58,21 +61,27 @@ export function BayView() {
     }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
 
-  const bayEquipment = bayFile
-    ? allEquipment.filter(e => bayFile.bay.equipment_ids.includes(e.id))
-    : [];
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const toggleEquipment = (eqId: string) => {
-    setBayFile(prev => {
-      if (!prev) return prev;
-      const ids = prev.bay.equipment_ids;
-      const next = ids.includes(eqId) ? ids.filter(i => i !== eqId) : [...ids, eqId];
-      return { ...prev, bay: { ...prev.bay, equipment_ids: next } };
-    });
-    setIsDirty(true);
-  };
+  const snapshot = (signals: BaySignal[]) =>
+    setUndoState(prev => undoPush(prev, signals));
 
   const handleAdd = (signals: BaySignal[]) => {
+    snapshot(bayFileRef.current?.bay.signals ?? []);
     setBayFile(prev => {
       if (!prev) return prev;
       return { ...prev, bay: { ...prev.bay, signals: [...prev.bay.signals, ...signals] } };
@@ -95,6 +104,7 @@ export function BayView() {
   };
 
   const handleDelete = (signalId: string) => {
+    snapshot(bayFileRef.current?.bay.signals ?? []);
     const sig = bayFileRef.current?.bay.signals.find(s => s.id === signalId);
     setBayFile(prev => {
       if (!prev) return prev;
@@ -117,6 +127,7 @@ export function BayView() {
   };
 
   const handleUpdate = (signalId: string, patch: Partial<BaySignal>) => {
+    snapshot(bayFileRef.current?.bay.signals ?? []);
     setBayFile(prev => {
       if (!prev) return prev;
       return {
@@ -128,6 +139,52 @@ export function BayView() {
       };
     });
     setIsDirty(true);
+  };
+
+  const handleReorder = (newOrder: string[]) => {
+    snapshot(bayFileRef.current?.bay.signals ?? []);
+    setBayFile(prev => {
+      if (!prev) return prev;
+      const map = new Map(prev.bay.signals.map(s => [s.id, s]));
+      const reordered = newOrder.map(id => map.get(id)).filter(Boolean) as typeof prev.bay.signals;
+      return { ...prev, bay: { ...prev.bay, signals: reordered } };
+    });
+    setIsDirty(true);
+  };
+
+  const handleDuplicate = (ids: string[], at: number) => {
+    snapshot(bayFileRef.current?.bay.signals ?? []);
+    setBayFile(prev => {
+      if (!prev) return prev;
+      const copies = prev.bay.signals
+        .filter(s => ids.includes(s.id))
+        .map(s => ({ ...s, id: crypto.randomUUID(), group_label: null, fat_tested: false, fat_tested_by: null, fat_tested_at: null, sat_tested: false, sat_tested_by: null, sat_tested_at: null }));
+      const insertAt = Math.max(0, Math.min(at - 1, prev.bay.signals.length));
+      const updated = [...prev.bay.signals];
+      updated.splice(insertAt, 0, ...copies);
+      return { ...prev, bay: { ...prev.bay, signals: updated } };
+    });
+    setIsDirty(true);
+  };
+
+  const handleUndo = () => {
+    setUndoState(prev => {
+      const next = undoUndo(prev);
+      if (next === prev) return prev;
+      setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
+      setIsDirty(true);
+      return next;
+    });
+  };
+
+  const handleRedo = () => {
+    setUndoState(prev => {
+      const next = undoRedo(prev);
+      if (next === prev) return prev;
+      setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
+      setIsDirty(true);
+      return next;
+    });
   };
 
   const commitChanges = async () => {
@@ -281,6 +338,24 @@ export function BayView() {
 
           {isDraftStatus && (
             <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleUndo}
+                disabled={undoState.past.length === 0}
+                title="Ctrl+Z"
+              >
+                ↩ Afturkalla
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleRedo}
+                disabled={undoState.future.length === 0}
+                title="Ctrl+Shift+Z"
+              >
+                ↪ Endurtaka
+              </Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
@@ -315,58 +390,6 @@ export function BayView() {
         </div>
       </div>
 
-      {/* Equipment assignment */}
-      {allEquipment.length > 0 && (
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          {(['apparatus', 'ied'] as const).map(cat => {
-            const group = allEquipment.filter(e => cat === 'ied' ? e.category === 'ied' : (e.category === 'apparatus' || !e.category));
-            if (group.length === 0) return null;
-            return (
-              <div key={cat} style={{ marginBottom: 'var(--space-3)' }}>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {cat === 'apparatus' ? 'Búnaður' : 'IED'}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                  {group.map(eq => {
-                    const checked = bay.equipment_ids.includes(eq.id);
-                    return (
-                      <label key={eq.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        padding: '5px 10px',
-                        background: checked ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)',
-                        border: `1px solid ${checked ? 'var(--accent)' : 'var(--line)'}`,
-                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '12px',
-                      }}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleEquipment(eq.id)} style={{ cursor: 'pointer' }} />
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{eq.code}</span>
-                        <span style={{ color: 'var(--muted)' }}>{cat === 'ied' ? (eq.model ?? eq.ied_name ?? 'IED') : (eq.type ?? '')}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-          {bayEquipment.length === 0 && (
-            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: 'var(--space-1)' }}>
-              Ekkert tæki valið — veldu tæki til að nota í merki picker
-            </div>
-          )}
-        </div>
-      )}
-
-      {allEquipment.length === 0 && (
-        <div style={{ marginBottom: 'var(--space-6)', fontSize: '12px', color: 'var(--muted)' }}>
-          Engin tæki skráð í verkefni —{' '}
-          <button
-            type="button"
-            onClick={() => navigate(`/projects/${projectId}`)}
-            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', padding: 0 }}
-          >
-            bæta við tækjum í verkefni
-          </button>
-        </div>
-      )}
 
       <SignalTable
         signals={bay.signals}
@@ -377,12 +400,14 @@ export function BayView() {
         reviewMode={isInReview || bay.signals.some(s => s.review_flagged)}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+        onDuplicate={handleDuplicate}
+        onReorder={handleReorder}
       />
 
       {showPicker && (
         <SignalPickerModal
           phase="DESIGN"
-          equipment={bayEquipment}
+          equipment={allEquipment}
           onAdd={handleAdd}
           onClose={() => setShowPicker(false)}
         />
