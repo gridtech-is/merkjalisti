@@ -123,10 +123,30 @@ export function BayView() {
 
   const handleUpdate = (signalId: string, patch: Partial<BaySignal>) => {
     const before = bayFileRef.current?.bay.signals ?? [];
+    const oldSig = before.find(s => s.id === signalId);
     const after = before.map(s => s.id === signalId ? { ...s, ...patch } : s);
     setUndoState(prev => undoPush(prev, after));
     setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
+
+    if (oldSig && projectId) {
+      for (const [field, newVal] of Object.entries(patch) as [string, unknown][]) {
+        const oldVal = (oldSig as unknown as Record<string, unknown>)[field];
+        if (oldVal === newVal) continue;
+        appendChange(api, projectId, {
+          user: userName,
+          phase: 'DESIGN',
+          type: 'FIELD_CHANGED',
+          target_id: signalId,
+          target_type: 'signal',
+          target_parent_id: bayId ?? null,
+          field,
+          old_value: oldVal != null ? String(oldVal) : null,
+          new_value: newVal != null ? String(newVal) : null,
+          comment: `${field} breytt`,
+        });
+      }
+    }
   };
 
   const handleReorder = (newOrder: string[]) => {

@@ -153,6 +153,7 @@ export interface BaySignal {
   sat_result: TestResult | null;
   review_flagged: boolean;
   review_comment: string | null;
+  group_label?: string | null;
 }
 
 // ─── Bay review ────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ export interface ChangeEntry {
   type: ChangeType;
   target_id: string;
   target_type: 'signal' | 'bay' | 'project' | 'equipment' | 'station';
+  target_parent_id?: string | null;   // bay ID when target_type === 'signal'
   field: string | null;
   old_value: string | null;
   new_value: string | null;
