@@ -116,7 +116,7 @@ export function ChangelogTab({ projectId }: Props) {
             <span style={{ color: 'var(--text-secondary)' }}>{TYPE_LABELS[e.type] ?? e.type}</span>
             <span style={{ color: 'var(--text)' }}>
               {e.comment}
-              {e.field && e.old_value !== null && (
+              {e.type === 'FIELD_CHANGED' && e.field && e.old_value !== null && (
                 <span style={{ color: 'var(--muted)', fontFamily: 'monospace', fontSize: '11px', marginLeft: '6px' }}>
                   {e.old_value} → {e.new_value ?? '∅'}
                 </span>
