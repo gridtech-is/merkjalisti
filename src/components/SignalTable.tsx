@@ -71,6 +71,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const stateIndex = new Map(states.map(s => [s.id, s]));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
+  const [filterEq, setFilterEq] = useState('');
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [flagComment, setFlagComment] = useState('');
   const [popupId, setPopupId] = useState<string | null>(null);
@@ -113,6 +114,9 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     setSelected(new Set());
   };
 
+  const eqCodesInSignals = [...new Set(signals.map(s => s.equipment_code).filter(Boolean))];
+  const visibleSignals = filterEq ? signals.filter(s => s.equipment_code === filterEq) : signals;
+
   const allEqCodes = equipment.map(e => e.code);
   const iedOptions = equipment; // Tech Key dropdown shows all equipment
   const blockInputStyle: React.CSSProperties = {
@@ -124,6 +128,26 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
 
   return (
     <div>
+      {/* Filter */}
+      {eqCodesInSignals.length > 1 && (
+        <div style={{ marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Sía:</span>
+          <select
+            value={filterEq}
+            onChange={e => setFilterEq(e.target.value)}
+            style={{
+              background: 'var(--surface-alt)', border: '1px solid var(--line)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+              padding: '4px 8px', fontSize: '12px', outline: 'none', cursor: 'pointer',
+            }}
+          >
+            <option value="">Allt ({signals.length})</option>
+            {eqCodesInSignals.map(code => (
+              <option key={code} value={code}>{code} ({signals.filter(s => s.equipment_code === code).length})</option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Block edit toolbar */}
       {selected.size > 0 && (
         <div style={{
@@ -244,7 +268,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             </tr>
           </thead>
           <tbody>
-            {signals.map((sig, i) => {
+            {visibleSignals.map((sig, i) => {
               const isSelected = selected.has(sig.id);
               return (
                 <tr key={sig.id} style={{ background: sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>

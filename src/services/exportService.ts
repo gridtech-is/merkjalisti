@@ -1,6 +1,110 @@
 // src/services/exportService.ts
 import * as XLSX from 'xlsx';
-import type { Bay, BaySignal } from '../types';
+import type { Bay, BaySignal, Equipment, ApparatusType, EquipmentCategory } from '../types';
+
+const APPARATUS_TYPES = ['Aflrofi', 'Skilrofi', 'Jarðrofi', 'Spennir', 'Stjórnbúnaður', 'Annað'];
+
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+const APPARATUS_HEADERS = ['Kóði', 'Gerð', 'Lýsing'];
+const IED_HEADERS = ['Tech key', 'IED nafn', 'Framleiðandi', 'Líkan', 'Lýsing'];
+
+export function exportEquipmentTemplate(equipment: Equipment[], projectName: string): void {
+  const wb = XLSX.utils.book_new();
+
+  const wsG = XLSX.utils.aoa_to_sheet([
+    ['Gerð', 'Lýsing'],
+    ['Aflrofi', 'Circuit Breaker (CB)'],
+    ['Skilrofi', 'Disconnector (DS)'],
+    ['Jarðrofi', 'Earth Switch (ES)'],
+    ['Spennir', 'Transformer (TR)'],
+    ['Stjórnbúnaður', 'Control equipment'],
+    ['Annað', 'Other'],
+  ]);
+  wsG['!cols'] = [{ wch: 18 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsG, 'Gerðir');
+
+  const apparatus = equipment.filter(e => e.category === 'apparatus' || !e.category);
+  const apparatusRows = apparatus.map(e => [e.code, e.type ?? '', e.description]);
+  const wsA = XLSX.utils.aoa_to_sheet([APPARATUS_HEADERS, ...apparatusRows]);
+  wsA['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 40 }];
+  wsA['!freeze'] = { xSplit: 0, ySplit: 1 };
+  XLSX.utils.book_append_sheet(wb, wsA, 'Búnaður');
+
+  const ieds = equipment.filter(e => e.category === 'ied');
+  const iedRows = ieds.map(e => [e.code, e.ied_name ?? '', e.manufacturer ?? '', e.model ?? '', e.description]);
+  const wsI = XLSX.utils.aoa_to_sheet([IED_HEADERS, ...iedRows]);
+  wsI['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 40 }];
+  wsI['!freeze'] = { xSplit: 0, ySplit: 1 };
+  XLSX.utils.book_append_sheet(wb, wsI, 'IED');
+
+  XLSX.writeFile(wb, `${projectName}-tæki.xlsx`);
+}
+
+export function importEquipmentFromExcel(file: File): Promise<Equipment[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const result: Equipment[] = [];
+
+        const wsA = wb.Sheets['Búnaður'];
+        if (wsA) {
+          const rows = XLSX.utils.sheet_to_json<string[]>(wsA, { header: 1, defval: '' }) as string[][];
+          for (const row of rows.slice(1)) {
+            const code = String(row[0] ?? '').trim().toUpperCase();
+            if (!code) continue;
+            const type = String(row[1] ?? '').trim();
+            result.push({
+              id: uuid(),
+              category: 'apparatus' as EquipmentCategory,
+              code,
+              type: (APPARATUS_TYPES.includes(type) ? type : 'Annað') as ApparatusType,
+              ied_name: null,
+              manufacturer: null,
+              model: null,
+              template_id: null,
+              description: String(row[2] ?? '').trim(),
+            });
+          }
+        }
+
+        const wsI = wb.Sheets['IED'];
+        if (wsI) {
+          const rows = XLSX.utils.sheet_to_json<string[]>(wsI, { header: 1, defval: '' }) as string[][];
+          for (const row of rows.slice(1)) {
+            const code = String(row[0] ?? '').trim().toUpperCase();
+            if (!code) continue;
+            result.push({
+              id: uuid(),
+              category: 'ied' as EquipmentCategory,
+              code,
+              type: null,
+              ied_name: String(row[1] ?? '').trim() || null,
+              manufacturer: String(row[2] ?? '').trim() || null,
+              model: String(row[3] ?? '').trim() || null,
+              template_id: null,
+              description: String(row[4] ?? '').trim(),
+            });
+          }
+        }
+
+        resolve(result);
+      } catch {
+        reject(new Error('Gat ekki lesið Excel skrá'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Villa við lestur skrár'));
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 const HEADERS = [
   'Kóði',              // display_id_equipment_signal

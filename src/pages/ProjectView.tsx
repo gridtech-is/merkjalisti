@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
-import { exportAllBaysToExcel } from '../services/exportService';
+import { exportAllBaysToExcel, exportEquipmentTemplate, importEquipmentFromExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
 import { listBays, loadBay, renameStation, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
@@ -460,8 +460,9 @@ export function ProjectView() {
       {/* Tæki */}
       {tab === 'equipment' && (
         <div>
-          {/* Sub-tabs */}
-          <div style={{ display: 'flex', gap: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
+          {/* Sub-tabs + toolbar í sömu línu */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
             {([['apparatus', `Búnaður (${apparatus.length})`], ['ied', `IED (${ieds.length})`]] as [EqTab, string][]).map(([id, label]) => (
               <button key={id} type="button" onClick={() => setEqTab(id)} style={{
                 background: eqTab === id ? 'var(--accent)' : 'var(--surface-alt)',
@@ -470,6 +471,37 @@ export function ProjectView() {
                 padding: '5px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
               }}>{label}</button>
             ))}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <Button variant="ghost" size="sm" onClick={() => exportEquipmentTemplate(equipment, project.name)}>
+                ↓ Excel sniðmát
+              </Button>
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', cursor: saving ? 'not-allowed' : 'pointer',
+                padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--text)', fontWeight: 500, fontSize: '13px',
+                opacity: saving ? 0.5 : 1,
+              }}>
+                ↑ Innflytja Excel
+                <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled={saving} onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  e.target.value = '';
+                  setSaving(true);
+                  try {
+                    const imported = await importEquipmentFromExcel(file);
+                    if (imported.length === 0) { alert('Engar línur fundust í skránni.'); return; }
+                    const existing = equipment.map(eq => eq.code);
+                    const fresh = imported.filter(eq => !existing.includes(eq.code));
+                    const dupes = imported.length - fresh.length;
+                    if (!confirm(`Bæta við ${fresh.length} tækjum?${dupes > 0 ? ` (${dupes} sleppt — kóðar eru nú þegar til)` : ''}`)) return;
+                    await saveEquipment([...equipment, ...fresh]);
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : 'Villa við innflutning');
+                  } finally { setSaving(false); }
+                }} />
+              </label>
+            </div>
           </div>
 
           {/* Búnaður */}
