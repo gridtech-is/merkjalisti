@@ -1,5 +1,5 @@
 // src/components/SignalTable.tsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType } from '../types';
 
@@ -12,6 +12,8 @@ interface Props {
   reviewMode?: boolean;
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
   onDelete: (signalId: string) => void;
+  onDuplicate?: (ids: string[], at: number) => void;
+  onReorder?: (newOrder: string[]) => void;
 }
 
 const SOURCE_OPTIONS: { value: SourceType; label: string }[] = [
@@ -64,13 +66,15 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, onUpdate, onDelete }: Props) {
+export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, onUpdate, onDelete, onDuplicate, onReorder }: Props) {
   // Build lookup index: code → library entry
   const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
   // Build state index: id → SignalState
   const stateIndex = new Map(states.map(s => [s.id, s]));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
+  const [filterEq, setFilterEq] = useState('');
+  const [filterText, setFilterText] = useState('');
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [flagComment, setFlagComment] = useState('');
   const [popupId, setPopupId] = useState<string | null>(null);
@@ -81,6 +85,10 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [blockRcb, setBlockRcb] = useState('');
   const [blockDse, setBlockDse] = useState('');
   const [blockEqCode, setBlockEqCode] = useState('');
+  const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [duplicateAt, setDuplicateAt] = useState('');
 
   if (signals.length === 0) {
     return (
@@ -113,8 +121,57 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     setSelected(new Set());
   };
 
+  const handleRowSelect = (sigId: string, idx: number, e: React.MouseEvent) => {
+    if (e.shiftKey && lastSelectedIdx !== null) {
+      const from = Math.min(lastSelectedIdx, idx);
+      const to = Math.max(lastSelectedIdx, idx);
+      setSelected(prev => {
+        const n = new Set(prev);
+        visibleSignals.slice(from, to + 1).forEach(s => n.add(s.id));
+        return n;
+      });
+    } else if (e.ctrlKey || e.metaKey) {
+      toggle(sigId);
+      setLastSelectedIdx(idx);
+    } else {
+      toggle(sigId);
+      setLastSelectedIdx(idx);
+    }
+  };
+
+  const handleDrop = (targetId: string) => {
+    if (!dragId || dragId === targetId || !onReorder) return;
+    const ids = signals.map(s => s.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    const reordered = [...ids];
+    reordered.splice(from, 1);
+    reordered.splice(to, 0, dragId);
+    onReorder(reordered);
+    setDragId(null);
+    setDragOverId(null);
+  };
+
+  const eqCodesInSignals = [...new Set(signals.map(s => s.equipment_code).filter(Boolean))];
+  const visibleSignals = signals.filter(s => {
+    if (filterEq && s.equipment_code !== filterEq) return false;
+    if (filterText) {
+      const q = filterText.toLowerCase();
+      const code = [bayDisplayId, s.equipment_code, s.signal_name].filter(Boolean).join('_').toLowerCase();
+      return (
+        (s.group_label ?? '').toLowerCase().includes(q) ||
+        s.equipment_code.toLowerCase().includes(q) ||
+        s.signal_name.toLowerCase().includes(q) ||
+        code.includes(q) ||
+        s.name_is.toLowerCase().includes(q) ||
+        (s.name_en ?? '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
   const allEqCodes = equipment.map(e => e.code);
-  const iedOptions = equipment; // Tech Key dropdown shows all equipment
+  const iedOptions = equipment.filter(e => e.category === 'ied');
   const blockInputStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
     borderRadius: 'var(--radius-sm)', color: 'var(--text)',
@@ -124,6 +181,49 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
 
   return (
     <div>
+      {/* Filter */}
+      <div style={{ marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        {eqCodesInSignals.length > 1 && (
+          <select
+            value={filterEq}
+            onChange={e => setFilterEq(e.target.value)}
+            style={{
+              background: 'var(--surface-alt)', border: '1px solid var(--line)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+              padding: '4px 8px', fontSize: '12px', outline: 'none', cursor: 'pointer',
+            }}
+          >
+            <option value="">Allt tæki ({signals.length})</option>
+            {eqCodesInSignals.map(code => (
+              <option key={code} value={code}>{code} ({signals.filter(s => s.equipment_code === code).length})</option>
+            ))}
+          </select>
+        )}
+        <input
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
+          placeholder="Leita í hópur, tæki, merki, kóða, texta..."
+          style={{
+            background: 'var(--surface-alt)', border: '1px solid var(--line)',
+            borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+            padding: '4px 10px', fontSize: '12px', outline: 'none', minWidth: '260px',
+          }}
+          onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+          onBlur={e => (e.target.style.borderColor = 'var(--line)')}
+        />
+        {(filterText || filterEq) && (
+          <button
+            type="button"
+            onClick={() => { setFilterText(''); setFilterEq(''); }}
+            style={{ fontSize: '12px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+          >✕ Hreinsa</button>
+        )}
+        {(filterText || filterEq) && (
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+            {visibleSignals.length} / {signals.length}
+          </span>
+        )}
+      </div>
       {/* Block edit toolbar */}
       {selected.size > 0 && (
         <div style={{
@@ -178,6 +278,28 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           </label>
           <div style={{ display: 'flex', gap: 'var(--space-2)', alignSelf: 'flex-end' }}>
             <Button size="sm" onClick={applyBlock}>Nota á valin</Button>
+            {onDuplicate && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>í línu</span>
+                <input
+                  type="number"
+                  value={duplicateAt}
+                  onChange={e => setDuplicateAt(e.target.value)}
+                  placeholder={String(signals.length + 1)}
+                  min={1}
+                  max={signals.length + 1}
+                  style={{ ...blockInputStyle, width: '52px', textAlign: 'center' }}
+                />
+                <Button size="sm" variant="ghost" onClick={() => {
+                  const at = parseInt(duplicateAt) || signals.length + 1;
+                  onDuplicate([...selected], at);
+                  setSelected(new Set());
+                  setDuplicateAt('');
+                }}>
+                  Afrita valin
+                </Button>
+              </div>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Hætta við</Button>
           </div>
         </div>
@@ -197,13 +319,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
           <thead>
             <tr>
               <th style={head}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
               </th>
+              <th style={{ ...head, width: '80px' }}>Hópur</th>
               {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
                 <th key={h} style={head}>{h}</th>
               ))}
@@ -223,6 +346,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             </tr>
             <tr>
               <th style={{ ...head, top: '33px' }}></th>
+              <th style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
                 <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               ))}
@@ -244,14 +368,94 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             </tr>
           </thead>
           <tbody>
-            {signals.map((sig, i) => {
+            {visibleSignals.map((sig, i) => {
               const isSelected = selected.has(sig.id);
               return (
-                <tr key={sig.id} style={{ background: sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
-                  <td style={{ ...cell, width: '32px', textAlign: 'center' }}>
-                    <input type="checkbox" checked={isSelected} onChange={() => toggle(sig.id)} style={{ cursor: 'pointer' }} />
+                <React.Fragment key={sig.id}>
+                  {!!sig.group_label && (
+                    <tr>
+                      <td colSpan={99} style={{
+                        padding: '4px 10px',
+                        background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                        borderTop: '2px solid var(--accent)',
+                        borderBottom: '1px solid var(--accent)',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        color: 'var(--accent)',
+                        letterSpacing: '0.03em',
+                      }}>
+                        {sig.group_label}
+                      </td>
+                    </tr>
+                  )}
+                  <tr
+                    draggable={!!onReorder}
+                    onDragStart={() => setDragId(sig.id)}
+                    onDragOver={e => { e.preventDefault(); setDragOverId(sig.id); }}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={() => handleDrop(sig.id)}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+                    style={{
+                      background: dragOverId === sig.id ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)',
+                      opacity: dragId === sig.id ? 0.4 : 1,
+                      cursor: onReorder ? 'grab' : 'default',
+                      borderTop: dragOverId === sig.id ? '2px solid var(--accent)' : undefined,
+                    }}
+                  >
+                  <td style={{ ...cell, width: '32px', textAlign: 'center' }}
+                    onClick={e => handleRowSelect(sig.id, i, e)}>
+                    <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer', pointerEvents: 'none' }} />
                   </td>
-                  <td style={{ ...cell, color: 'var(--muted)', width: '28px' }}>{i + 1}</td>
+                  <td style={{ ...cell, width: '80px', padding: '2px 6px' }}>
+                    <input
+                      style={{
+                        ...eInput,
+                        width: '100%',
+                        fontSize: '11px',
+                        color: 'var(--accent)',
+                        fontWeight: sig.group_label ? 600 : 400,
+                        border: '1px solid var(--line)',
+                        background: sig.group_label ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
+                      }}
+                      defaultValue={sig.group_label ?? ''}
+                      key={`gl-${sig.id}`}
+                      placeholder="hópur..."
+                      onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+                      onBlur={e => {
+                        e.target.style.borderColor = 'var(--line)';
+                        onUpdate(sig.id, { group_label: e.target.value.trim() || null });
+                      }}
+                      onChange={() => {}}
+                    />
+                  </td>
+                  <td style={{ ...cell, width: '28px' }}>
+                    {onReorder ? (
+                      <input
+                        key={`pos-${sig.id}-${i}`}
+                        defaultValue={i + 1}
+                        style={{ ...eInput, width: '28px', textAlign: 'center', color: 'var(--muted)', fontSize: '11px' }}
+                        onFocus={e => { e.target.select(); e.target.style.borderColor = 'var(--accent)'; }}
+                        onBlur={e => {
+                          e.target.style.borderColor = 'transparent';
+                          const n = parseInt(e.target.value);
+                          if (!isNaN(n) && n !== i + 1) {
+                            const ids = signals.map(s => s.id);
+                            const to = Math.max(0, Math.min(n - 1, ids.length - 1));
+                            const reordered = [...ids];
+                            reordered.splice(i, 1);
+                            reordered.splice(to, 0, sig.id);
+                            onReorder(reordered);
+                          } else {
+                            e.target.value = String(i + 1);
+                          }
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        onChange={() => {}}
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--muted)' }}>{i + 1}</span>
+                    )}
+                  </td>
                   {/* Tæki dropdown */}
                   <td style={{ ...cell, minWidth: '80px' }}>
                     {allEqCodes.length > 0 ? (
@@ -564,6 +768,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                     <Button variant="danger" size="sm" onClick={() => onDelete(sig.id)}>Eyða</Button>
                   </td>
                 </tr>
+                </React.Fragment>
               );
             })}
           </tbody>

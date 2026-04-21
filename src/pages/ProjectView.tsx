@@ -5,7 +5,7 @@ import { useApi } from '../context/ApiContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel, exportEquipmentTemplate, importEquipmentFromExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
-import { listBays, loadBay, sendBayForReview } from '../services/bayService';
+import { listBays, loadBay, renameStation, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase, BayStatus } from '../types';
@@ -103,6 +103,8 @@ export function ProjectView() {
   const [projectSha, setProjectSha] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
   const [stationStatus, setStationStatus] = useState<BayStatus | null>(null);
+  const [savingStation, setSavingStation] = useState(false);
+  const [stationDraft, setStationDraft] = useState('');
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -125,6 +127,7 @@ export function ProjectView() {
     ]).then(([files, bayList, { data: tmplData }, stationFile]) => {
       setProject(files.project);
       setProjectSha(files.projectSha);
+      setStationDraft(files.project.station_number);
       setEquipment(files.equipment);
       setEquipmentSha(files.equipmentSha);
       setBays(bayList);
@@ -146,6 +149,48 @@ export function ProjectView() {
     const newSha = await api.writeJson(`projects/${projectId}/equipment.json`, updated, equipmentSha, msg);
     setEquipment(updated);
     setEquipmentSha(newSha);
+  };
+
+  const commitStationNumber = async () => {
+    if (!project || !projectId) return;
+    const next = stationDraft;
+    if (!next || next === project.station_number) {
+      // Reset draft to committed value (in case user cleared and blurred)
+      setStationDraft(project.station_number);
+      return;
+    }
+    setSavingStation(true);
+    const previous = project.station_number;
+    try {
+      const updated: Project = { ...project, station_number: next };
+      const newSha = await api.writeJson(
+        `projects/${projectId}/project.json`, updated, projectSha,
+        `Uppfæra stöðvarnúmer: ${previous} → ${next}`
+      );
+      setProject(updated);
+      setProjectSha(newSha);
+      await renameStation(api, projectId, next);
+      const bayList = await listBays(api, projectId);
+      setBays(bayList);
+    } catch (err) {
+      console.error('Failed to update station number', err);
+      alert('Villa við að uppfæra stöðvarnúmer. Endurhlaða verkefnið til að sjá stöðu.');
+      // Reload to reflect actual server state after partial failure
+      try {
+        const [files, bayList] = await Promise.all([
+          loadProject(api, projectId),
+          listBays(api, projectId),
+        ]);
+        setProject(files.project);
+        setProjectSha(files.projectSha);
+        setStationDraft(files.project.station_number);
+        setBays(bayList);
+      } catch {
+        // ignore secondary failure
+      }
+    } finally {
+      setSavingStation(false);
+    }
   };
 
   const handleAddApparatus = async () => {
@@ -278,8 +323,26 @@ export function ProjectView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{project.name}</h1>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {apparatus.length} búnaður · {ieds.length} IED · {bays.length} reitir
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '2px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--muted)' }}>Stöðvarnúmer:</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={stationDraft}
+              onChange={e => setStationDraft(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              onBlur={commitStationNumber}
+              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              disabled={savingStation}
+              title="Breyting vistast þegar reitur tapar fókus"
+              style={{
+                width: '80px', padding: '2px 6px', fontSize: '12px',
+                background: 'var(--surface-alt)', border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+              }}
+            />
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              · {apparatus.length} búnaður · {ieds.length} IED · {bays.length} reitir
+            </span>
           </div>
         </div>
         <Badge phase={project.phase}>{project.phase}</Badge>

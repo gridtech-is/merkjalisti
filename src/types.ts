@@ -57,6 +57,7 @@ export interface ProjectReview {
 export interface Project {
   id: string;
   name: string;
+  station_number: string;
   description: string;
   created: string;
   phase: ProjectPhase;
@@ -152,6 +153,7 @@ export interface BaySignal {
   sat_result: TestResult | null;
   review_flagged: boolean;
   review_comment: string | null;
+  group_label?: string | null;
 }
 
 // ─── Bay review ────────────────────────────────────────────────────────────
@@ -171,7 +173,6 @@ export interface BayReview {
 
 export interface Bay {
   id: string;
-  station: string;
   voltage_level: string;
   bay_name: string;
   display_id: string;
@@ -210,6 +211,7 @@ export interface ChangeEntry {
   type: ChangeType;
   target_id: string;
   target_type: 'signal' | 'bay' | 'project' | 'equipment' | 'station';
+  target_parent_id?: string | null;   // bay ID when target_type === 'signal'
   field: string | null;
   old_value: string | null;
   new_value: string | null;
@@ -241,7 +243,6 @@ export interface Testing {
 
 export interface BayTemplate {
   template_name: string;
-  station: string;
   voltage_level: string;
   bay_name: string;
   display_id: string;

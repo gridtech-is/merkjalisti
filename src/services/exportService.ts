@@ -17,6 +17,17 @@ const IED_HEADERS = ['Tech key', 'IED nafn', 'Framleiðandi', 'Líkan', 'Lýsing
 export function exportEquipmentTemplate(equipment: Equipment[], projectName: string): void {
   const wb = XLSX.utils.book_new();
 
+  const wsG = XLSX.utils.aoa_to_sheet([
+    ['Gerð', 'Lýsing'],
+    ['Aflrofi', 'Circuit Breaker (CB)'],
+    ['Skilrofi', 'Disconnector (DS)'],
+    ['Jarðrofi', 'Earth Switch (ES)'],
+    ['Spennir', 'Transformer (TR)'],
+    ['Stjórnbúnaður', 'Control equipment'],
+    ['Annað', 'Other'],
+  ]);
+  wsG['!cols'] = [{ wch: 18 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsG, 'Gerðir');
   const apparatus = equipment.filter(e => e.category === 'apparatus' || !e.category);
   const apparatusRows = apparatus.map(e => [e.code, e.type ?? '', e.description]);
   const wsA = XLSX.utils.aoa_to_sheet([APPARATUS_HEADERS, ...apparatusRows]);

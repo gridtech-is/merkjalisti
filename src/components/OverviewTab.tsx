@@ -105,7 +105,6 @@ export function OverviewTab({ projectId, projectName }: Props) {
   const handleExport = () => {
     const syntheticStationBay: Bay = {
       id: 'station',
-      station: projectName,
       voltage_level: '',
       bay_name: 'Stöðvarmerki',
       display_id: 'STÖÐ',

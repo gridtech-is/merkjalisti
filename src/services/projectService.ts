@@ -27,14 +27,24 @@ function uuid(): string {
 export async function createProject(
   api: GitHubApi,
   name: string,
+  stationNumber: string,
   createdBy: string
 ): Promise<ProjectFiles> {
+  if (!stationNumber.trim()) {
+    throw new Error('station_number er skylt');
+  }
   const id = uuid();
   const now = new Date().toISOString();
   const base = `projects/${id}`;
 
   const project: Project = {
-    id, name, description: '', created: now, phase: 'DESIGN', review: null,
+    id,
+    name,
+    station_number: stationNumber,
+    description: '',
+    created: now,
+    phase: 'DESIGN',
+    review: null,
   };
   const equipment: Equipment[] = [];
   const stationSignals: StationSignals = { status: 'DRAFT', review: null, signals: [] };
