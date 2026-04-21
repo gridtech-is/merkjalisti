@@ -77,15 +77,11 @@ export function BayView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const snapshot = (signals: BaySignal[]) =>
-    setUndoState(prev => undoPush(prev, signals));
-
   const handleAdd = (signals: BaySignal[]) => {
-    snapshot(bayFileRef.current?.bay.signals ?? []);
-    setBayFile(prev => {
-      if (!prev) return prev;
-      return { ...prev, bay: { ...prev.bay, signals: [...prev.bay.signals, ...signals] } };
-    });
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const after = [...before, ...signals];
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
     setShowPicker(false);
     signals.forEach(sig => {
@@ -104,12 +100,11 @@ export function BayView() {
   };
 
   const handleDelete = (signalId: string) => {
-    snapshot(bayFileRef.current?.bay.signals ?? []);
-    const sig = bayFileRef.current?.bay.signals.find(s => s.id === signalId);
-    setBayFile(prev => {
-      if (!prev) return prev;
-      return { ...prev, bay: { ...prev.bay, signals: prev.bay.signals.filter(s => s.id !== signalId) } };
-    });
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const sig = before.find(s => s.id === signalId);
+    const after = before.filter(s => s.id !== signalId);
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
     if (sig) {
       appendChange(api, projectId!, {
@@ -127,64 +122,55 @@ export function BayView() {
   };
 
   const handleUpdate = (signalId: string, patch: Partial<BaySignal>) => {
-    snapshot(bayFileRef.current?.bay.signals ?? []);
-    setBayFile(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        bay: {
-          ...prev.bay,
-          signals: prev.bay.signals.map(s => s.id === signalId ? { ...s, ...patch } : s),
-        },
-      };
-    });
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const after = before.map(s => s.id === signalId ? { ...s, ...patch } : s);
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
   };
 
   const handleReorder = (newOrder: string[]) => {
-    snapshot(bayFileRef.current?.bay.signals ?? []);
-    setBayFile(prev => {
-      if (!prev) return prev;
-      const map = new Map(prev.bay.signals.map(s => [s.id, s]));
-      const reordered = newOrder.map(id => map.get(id)).filter(Boolean) as typeof prev.bay.signals;
-      return { ...prev, bay: { ...prev.bay, signals: reordered } };
-    });
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const map = new Map(before.map(s => [s.id, s]));
+    const after = newOrder.map(id => map.get(id)).filter(Boolean) as typeof before;
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
   };
 
   const handleDuplicate = (ids: string[], at: number) => {
-    snapshot(bayFileRef.current?.bay.signals ?? []);
-    setBayFile(prev => {
-      if (!prev) return prev;
-      const copies = prev.bay.signals
-        .filter(s => ids.includes(s.id))
-        .map(s => ({ ...s, id: crypto.randomUUID(), group_label: null, fat_tested: false, fat_tested_by: null, fat_tested_at: null, sat_tested: false, sat_tested_by: null, sat_tested_at: null }));
-      const insertAt = Math.max(0, Math.min(at - 1, prev.bay.signals.length));
-      const updated = [...prev.bay.signals];
-      updated.splice(insertAt, 0, ...copies);
-      return { ...prev, bay: { ...prev.bay, signals: updated } };
-    });
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const copies = before
+      .filter(s => ids.includes(s.id))
+      .map(s => ({
+        ...s,
+        id: crypto.randomUUID(),
+        group_label: null,
+        fat_tested: false, fat_tested_by: null, fat_tested_at: null, fat_result: null,
+        sat_tested: false, sat_tested_by: null, sat_tested_at: null, sat_result: null,
+      }));
+    const insertAt = Math.max(0, Math.min(at - 1, before.length));
+    const after = [...before];
+    after.splice(insertAt, 0, ...copies);
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
   };
 
   const handleUndo = () => {
-    setUndoState(prev => {
-      const next = undoUndo(prev);
-      if (next === prev) return prev;
-      setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
-      setIsDirty(true);
-      return next;
-    });
+    const next = undoUndo(undoState);
+    if (next === undoState) return;
+    setUndoState(next);
+    setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
+    setIsDirty(true);
   };
 
   const handleRedo = () => {
-    setUndoState(prev => {
-      const next = undoRedo(prev);
-      if (next === prev) return prev;
-      setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
-      setIsDirty(true);
-      return next;
-    });
+    const next = undoRedo(undoState);
+    if (next === undoState) return;
+    setUndoState(next);
+    setBayFile(bf => bf ? { ...bf, bay: { ...bf.bay, signals: next.present } } : bf);
+    setIsDirty(true);
   };
 
   const commitChanges = async () => {
