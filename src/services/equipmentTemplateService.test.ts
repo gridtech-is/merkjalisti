@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   applyTemplateToBay,
   createTemplateFromIED,
+  listEquipmentTemplates,
+  saveEquipmentTemplate,
+  deleteEquipmentTemplate,
 } from './equipmentTemplateService';
 import type { BaySignal, EquipmentTemplate } from '../types';
 
@@ -208,5 +211,80 @@ describe('createTemplateFromIED', () => {
     expect(mockApi.writeJson).toHaveBeenCalledOnce();
     const [path] = mockApi.writeJson.mock.calls[0] as [string, unknown];
     expect(path).toBe(`data/equipment_templates/${template.id}.json`);
+  });
+});
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+describe('listEquipmentTemplates', () => {
+  it('skilar tóman lista þegar mappan er tóm', async () => {
+    const api = { listDirectory: vi.fn().mockResolvedValue([]) };
+    const result = await listEquipmentTemplates(api as never);
+    expect(result).toEqual([]);
+  });
+
+  it('skilar tóman lista þegar mappan er ekki til', async () => {
+    const api = { listDirectory: vi.fn().mockRejectedValue(new Error('not found')) };
+    const result = await listEquipmentTemplates(api as never);
+    expect(result).toEqual([]);
+  });
+
+  it('les hverja template skrá', async () => {
+    const tmpl: EquipmentTemplate = { id: 'uuid-1', name: 'Test', category: 'ied', signals: [] };
+    const api = {
+      listDirectory: vi.fn().mockResolvedValue(['uuid-1.json']),
+      readJson: vi.fn().mockResolvedValue({ data: tmpl, sha: 'sha1' }),
+    };
+    const result = await listEquipmentTemplates(api as never);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('uuid-1');
+  });
+});
+
+describe('saveEquipmentTemplate', () => {
+  it('skrifar nýtt template með sha=null', async () => {
+    const api = { writeJson: vi.fn().mockResolvedValue('sha-new') };
+    const tmpl: EquipmentTemplate = { id: 'uuid-1', name: 'Test', category: 'ied', signals: [] };
+    const file = { template: tmpl, sha: '' };
+
+    const result = await saveEquipmentTemplate(api as never, file, true);
+
+    expect(api.writeJson).toHaveBeenCalledWith(
+      'data/equipment_templates/uuid-1.json',
+      tmpl,
+      null,
+      expect.any(String),
+    );
+    expect(result.sha).toBe('sha-new');
+  });
+
+  it('skrifar með gildandi sha þegar uppfært', async () => {
+    const api = { writeJson: vi.fn().mockResolvedValue('sha-new') };
+    const tmpl: EquipmentTemplate = { id: 'uuid-1', name: 'Test', category: 'ied', signals: [] };
+    const file = { template: tmpl, sha: 'sha-old' };
+
+    await saveEquipmentTemplate(api as never, file, false);
+
+    expect(api.writeJson).toHaveBeenCalledWith(
+      'data/equipment_templates/uuid-1.json',
+      tmpl,
+      'sha-old',
+      expect.any(String),
+    );
+  });
+});
+
+describe('deleteEquipmentTemplate', () => {
+  it('kallar á deleteFile með réttum slóð', async () => {
+    const api = {
+      readJson: vi.fn().mockResolvedValue({ data: {}, sha: 'sha-del' }),
+      deleteFile: vi.fn().mockResolvedValue(undefined),
+    };
+    await deleteEquipmentTemplate(api as never, 'uuid-1');
+    expect(api.deleteFile).toHaveBeenCalledWith(
+      'data/equipment_templates/uuid-1.json',
+      'sha-del',
+      expect.any(String),
+    );
   });
 });

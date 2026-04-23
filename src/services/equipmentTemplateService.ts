@@ -18,24 +18,48 @@ function templatePath(id: string): string {
   return `data/equipment_templates/${id}.json`;
 }
 
-export async function listEquipmentTemplates(_api: GitHubApi): Promise<EquipmentTemplate[]> {
-  return [];
+export async function listEquipmentTemplates(api: GitHubApi): Promise<EquipmentTemplate[]> {
+  let entries: string[];
+  try {
+    entries = await api.listDirectory('data/equipment_templates');
+  } catch {
+    return [];
+  }
+  const jsonFiles = entries.filter(e => e.endsWith('.json'));
+  const results = await Promise.allSettled(
+    jsonFiles.map(f => api.readJson<EquipmentTemplate>(`data/equipment_templates/${f}`))
+  );
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ data: EquipmentTemplate; sha: string }> => r.status === 'fulfilled')
+    .map(r => r.value.data);
 }
 
-export async function loadEquipmentTemplate(_api: GitHubApi, _id: string): Promise<EquipmentTemplateFile> {
-  throw new Error('not implemented');
+export async function loadEquipmentTemplate(api: GitHubApi, id: string): Promise<EquipmentTemplateFile> {
+  const { data, sha } = await api.readJson<EquipmentTemplate>(templatePath(id));
+  return { template: data, sha };
 }
 
 export async function saveEquipmentTemplate(
-  _api: GitHubApi,
-  _file: EquipmentTemplateFile,
-  _isNew: boolean,
+  api: GitHubApi,
+  file: EquipmentTemplateFile,
+  isNew: boolean,
 ): Promise<EquipmentTemplateFile> {
-  throw new Error('not implemented');
+  const sha = await api.writeJson(
+    templatePath(file.template.id),
+    file.template,
+    isNew ? null : file.sha,
+    `Uppfærsla tækjasniðmáts: ${file.template.name}`,
+  );
+  return { ...file, sha };
 }
 
-export async function deleteEquipmentTemplate(_api: GitHubApi, _id: string): Promise<void> {
-  throw new Error('not implemented');
+export async function deleteEquipmentTemplate(api: GitHubApi, id: string): Promise<void> {
+  const { sha } = await api.readJson<EquipmentTemplate>(templatePath(id));
+  await api.deleteFile(
+    templatePath(id),
+    sha,
+    `Eyða tækjasniðmáti: ${id}`,
+  );
 }
 
 export async function createTemplateFromIED(

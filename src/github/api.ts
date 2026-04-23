@@ -69,4 +69,14 @@ export class GitHubApi {
     if (!Array.isArray(data)) return [];
     return data.map(item => item.name);
   }
+
+  async deleteFile(path: string, sha: string, message: string): Promise<void> {
+    await this.octokit.repos.deleteFile({
+      owner: this.owner,
+      repo: this.repo,
+      path,
+      message,
+      sha,
+    });
+  }
 }
