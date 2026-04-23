@@ -104,6 +104,20 @@ export interface EquipmentTemplate {
   manufacturer?: string;
   model?: string;
   description?: string;
+  iec61850_edition?: '1' | '2' | '2.1';
+  signals: EquipmentTemplateSignal[];
+}
+
+export interface EquipmentTemplateSignal {
+  id: string;
+  library_id: string;
+  signal_name: string;
+  ld_inst: string | null;
+  prefix: string | null;
+  ln_class: string | null;
+  ln_inst: string | null;
+  do_name: string | null;
+  da_name: string | null;
 }
 
 // ─── Per-state alarm/event configuration ──────────────────────────────────
