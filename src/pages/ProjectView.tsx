@@ -9,11 +9,12 @@ import { ChangelogTab } from '../components/ChangelogTab';
 import { listBays, loadBay, renameStation, sendBayForReview } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
-import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, ProjectPhase, BayStatus } from '../types';
+import type { Project, Equipment, EquipmentTemplate, Bay, BaySignal, ApparatusType, ProjectPhase, BayStatus } from '../types';
 import { StationSignalsTab } from '../components/StationSignalsTab';
 import { OverviewTab } from '../components/OverviewTab';
 import { loadStation } from '../services/stationService';
 import { parseModel, saveModel, loadIedModel } from '../services/iedModelService';
+import { createTemplateFromIED } from '../services/equipmentTemplateService';
 
 type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
 type EqTab = 'apparatus' | 'ied';
@@ -87,6 +88,108 @@ function emptyIED(code: string, iedName: string, tmpl: EquipmentTemplate | null,
   };
 }
 
+interface SaveTemplateModalProps {
+  ied: Equipment;
+  allBaySignals: BaySignal[];
+  bays: Bay[];
+  onSaved: () => void;
+  onClose: () => void;
+}
+
+function SaveTemplateModal({ ied, allBaySignals, bays, onSaved, onClose }: SaveTemplateModalProps) {
+  const { api } = useApi();
+  const [name, setName] = useState(`${ied.manufacturer ?? ''} ${ied.model ?? ''}`.trim() || ied.code);
+  const [edition, setEdition] = useState<'1' | '2' | '2.1'>('2');
+  const [description, setDescription] = useState(ied.description ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const matching = allBaySignals.filter(s => s.equipment_code === ied.code);
+  const bayCount = bays.filter(b => b.signals.some(s => s.equipment_code === ied.code)).length;
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await createTemplateFromIED(api, {
+        name,
+        edition,
+        manufacturer: ied.manufacturer ?? undefined,
+        model: ied.model ?? undefined,
+        description: description || undefined,
+        iedCode: ied.code,
+        baySignals: allBaySignals,
+      });
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes('library_id')) {
+        setError('Sniðmát geta ekki innihaldið sérsniðin merki. Vinsamlegast tengdu öll merkin við Merkjasafn fyrst.');
+      } else {
+        setError('Villa við vistun. Reyndu aftur.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', width: '440px', maxWidth: '95vw' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700 }}>Gera tækjasniðmát</h2>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-secondary)' }}>✕</button>
+        </div>
+
+        <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: 'var(--space-4)' }}>
+          Safnað {matching.length} merkjum úr {bayCount} reit(um) með kóðann <strong>{ied.code}</strong>.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Nafn sniðmáts
+            <input
+              style={{ display: 'block', width: '100%', marginTop: '2px', padding: '6px 8px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </label>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            IEC 61850 útgáfa
+            <select
+              style={{ display: 'block', width: '100%', marginTop: '2px', padding: '6px 8px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+              value={edition}
+              onChange={e => setEdition(e.target.value as '1' | '2' | '2.1')}
+            >
+              <option value="1">Ed 1</option>
+              <option value="2">Ed 2</option>
+              <option value="2.1">Ed 2.1</option>
+            </select>
+          </label>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Lýsing
+            <textarea
+              style={{ display: 'block', width: '100%', marginTop: '2px', padding: '6px 8px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', resize: 'vertical', minHeight: '60px' }}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {error && <p style={{ fontSize: '12px', color: 'var(--danger)', marginBottom: 'var(--space-3)' }}>{error}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+          <button type="button" onClick={onClose} style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text)' }}>Hætta við</button>
+          <button type="button" onClick={handleSave} disabled={saving || !name.trim() || matching.length === 0}
+            style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', opacity: (saving || !name.trim() || matching.length === 0) ? 0.5 : 1 }}>
+            {saving ? 'Vistar...' : 'Vista'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>();
   const { api, userName } = useApi();
@@ -127,6 +230,10 @@ export function ProjectView() {
   const [modelUploading, setModelUploading] = useState<string | null>(null);
   const [iedMismatch, setIedMismatch] = useState<{ eq: Equipment; fcda: import('../types').IedFcda[]; iedName: string } | null>(null);
 
+  // Save template modal
+  const [saveTemplateIed, setSaveTemplateIed] = useState<Equipment | null>(null);
+  const [allBaySignals, setAllBaySignals] = useState<BaySignal[]>([]);
+
   useEffect(() => {
     if (!projectId) return;
     Promise.all([
@@ -142,6 +249,7 @@ export function ProjectView() {
       setEquipment(files.equipment);
       setEquipmentSha(files.equipmentSha);
       setBays(bayList);
+      setAllBaySignals(bayList.flatMap(b => b.signals));
       setTemplates(tmplData);
       setStationStatus(stationFile?.station.status ?? null);
     }).catch(() => {
@@ -731,6 +839,21 @@ export function ProjectView() {
                             {modelUploading === eq.id ? '...' : iedModels.has(eq.id) ? `✓ ${iedModels.get(eq.id)!.count} merki` : '📂 ICD'}
                           </span>
                         </label>
+                        {allBaySignals.some(s => s.equipment_code === eq.code) && (
+                          <button
+                            type="button"
+                            onClick={() => setSaveTemplateIed(eq)}
+                            style={{
+                              display: 'inline-block', padding: '3px 8px', fontSize: '11px',
+                              border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title="Gera tækjasniðmát úr þessum IED"
+                          >
+                            ⊕ Sniðmát
+                          </button>
+                        )}
                         <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
                       </div>
                     </td>
@@ -799,6 +922,16 @@ export function ProjectView() {
             } finally { setSaving(false); }
           }}
           onClose={() => setShowScd(false)}
+        />
+      )}
+
+      {saveTemplateIed && (
+        <SaveTemplateModal
+          ied={saveTemplateIed}
+          allBaySignals={allBaySignals}
+          bays={bays}
+          onSaved={() => {}}
+          onClose={() => setSaveTemplateIed(null)}
         />
       )}
 
