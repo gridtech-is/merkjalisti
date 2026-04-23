@@ -12,8 +12,10 @@ import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Bay, Equipment, Project, SignalLibraryEntry, SignalState, IedFcda } from '../types';
+import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, SignalLibraryEntry, SignalState, IedFcda } from '../types';
 import { loadIedModel } from '../services/iedModelService';
+import { listEquipmentTemplates } from '../services/equipmentTemplateService';
+import { ApplyTemplateModal } from '../components/ApplyTemplateModal';
 import { createUndoState, undoPush, undoUndo, undoRedo, type UndoState } from '../utils/undoStack';
 
 export function BayView() {
@@ -36,6 +38,8 @@ export function BayView() {
   const [stationNumber, setStationNumber] = useState<string>('');
   const [undoState, setUndoState] = useState<UndoState<BaySignal[]>>(() => createUndoState([]));
   const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
+  const [signalTemplates, setSignalTemplates] = useState<EquipmentTemplate[]>([]);
+  const [applyTemplateIed, setApplyTemplateIed] = useState<Equipment | null>(null);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -71,6 +75,7 @@ export function BayView() {
         setIedModels(map);
       });
     }).finally(() => setLoading(false));
+    listEquipmentTemplates(api).then(setSignalTemplates).catch(() => {});
   }, [api, projectId, bayId]);
 
   useEffect(() => {
@@ -470,6 +475,31 @@ export function BayView() {
       </div>
 
 
+      {/* IED chips */}
+      {(() => {
+        const bayIeds = allEquipment.filter(eq => eq.category === 'ied' && bay.equipment_ids.includes(eq.id));
+        if (bayIeds.length === 0) return null;
+        return (
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+            {bayIeds.map(eq => (
+              <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', background: 'color-mix(in srgb, var(--accent) 10%, transparent)', border: '1px solid var(--accent)', borderRadius: '999px', fontSize: '12px' }}>
+                <span style={{ fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}>{eq.code}</span>
+                {eq.manufacturer && <span style={{ color: 'var(--text-secondary)' }}>{eq.manufacturer}</span>}
+                {eq.model && <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{eq.model}</span>}
+                {isDraftStatus && (
+                  <button
+                    type="button"
+                    onClick={() => setApplyTemplateIed(eq)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '11px', padding: '0 2px', fontFamily: 'inherit' }}
+                    title="Beita IEC 61850 sniðmáti"
+                  >↓ Sniðmát</button>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       <SignalTable
         signals={bay.signals}
         equipment={allEquipment}
@@ -515,6 +545,20 @@ export function BayView() {
           userName={userName}
           onUpdate={handleUpdate}
           onClose={() => setTestPhase(null)}
+        />
+      )}
+
+      {applyTemplateIed && bayFile && (
+        <ApplyTemplateModal
+          ied={applyTemplateIed}
+          templates={signalTemplates}
+          baySignals={bayFile.bay.signals}
+          onApply={(updated, matchedCount) => {
+            setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: updated } } : prev);
+            setIsDirty(true);
+            alert(`Uppfærði IEC61850 á ${matchedCount} merkjum.`);
+          }}
+          onClose={() => setApplyTemplateIed(null)}
         />
       )}
     </div>
