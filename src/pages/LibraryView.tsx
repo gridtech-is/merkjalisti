@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../context/ApiContext';
 import { listProjects } from '../services/projectService';
 import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
+import { listEquipmentTemplates, loadEquipmentTemplate, saveEquipmentTemplate, type EquipmentTemplateFile } from '../services/equipmentTemplateService';
 import { Button } from '../components/ui';
+import { EquipmentTemplateEditor } from '../components/EquipmentTemplateEditor';
 import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap } from '../types';
 
 type LibTab = 'signals' | 'states' | 'templates';
@@ -857,35 +859,54 @@ function StatesTab() {
 
 function TemplatesTab() {
   const { api } = useApi();
-  const [eqTemplates, setEqTemplates] = useState<EquipmentTemplate[]>([]);
+  const [eqCatalog, setEqCatalog] = useState<EquipmentTemplate[]>([]);
+  const [eqSignalTemplates, setEqSignalTemplates] = useState<EquipmentTemplate[]>([]);
   const [bayTemplates, setBayTemplates] = useState<BayTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'equipment' | 'bay'>('equipment');
+  const [editingFile, setEditingFile] = useState<EquipmentTemplateFile | null>(null);
+  const [signalLibrary, setSignalLibrary] = useState<SignalLibraryEntry[]>([]);
 
   useEffect(() => {
     Promise.all([
+      api.readJson<SignalLibraryEntry[]>('data/signal_library.json').catch(() => ({ data: [] as SignalLibraryEntry[], sha: '' })),
       api.readJson<EquipmentTemplate[]>('data/equipment_templates.json').catch(() => ({ data: [] as EquipmentTemplate[], sha: '' })),
+      listEquipmentTemplates(api),
       listBayTemplates(api),
-    ]).then(([{ data: eq }, bay]) => {
-      setEqTemplates(eq);
+    ]).then(([{ data: lib }, { data: catalog }, signalTmpl, bay]) => {
+      setSignalLibrary(lib);
+      setEqCatalog(catalog.map(t => ({ ...t, signals: t.signals ?? [] })));
+      setEqSignalTemplates(signalTmpl);
       setBayTemplates(bay);
+    }).catch(() => {
+      setLoadError('Villa við að hlaða sniðmátum. Reyndu aftur.');
     }).finally(() => setLoading(false));
   }, [api]);
 
-  const cell: React.CSSProperties = {
-    padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px',
-  };
-  const head: React.CSSProperties = {
-    ...cell, fontWeight: 600, color: 'var(--text-secondary)',
-    background: 'var(--surface-alt)', whiteSpace: 'nowrap',
+  const handleNewTemplate = async () => {
+    const id = crypto.randomUUID();
+    const template: EquipmentTemplate = { id, name: 'Nýtt sniðmát', category: 'ied', iec61850_edition: '2', signals: [] };
+    const file = { template, sha: '' };
+    try {
+      const saved = await saveEquipmentTemplate(api, file, true);
+      setEqSignalTemplates(prev => [...prev, saved.template]);
+      setEditingFile(saved);
+    } catch {
+      alert('Villa við að búa til sniðmát. Reyndu aftur.');
+    }
   };
 
+  const cell: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px' };
+  const head: React.CSSProperties = { ...cell, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--surface-alt)', whiteSpace: 'nowrap' };
+
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (loadError) return <p style={{ color: 'var(--danger)' }}>{loadError}</p>;
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        {([['equipment', `Tækjasniðmát (${eqTemplates.length})`], ['bay', `Reitsniðmát (${bayTemplates.length})`]] as ['equipment' | 'bay', string][]).map(([id, label]) => (
+        {([['equipment', `Tækjasniðmát (${eqCatalog.length + eqSignalTemplates.length})`], ['bay', `Reitsniðmát (${bayTemplates.length})`]] as ['equipment' | 'bay', string][]).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setSubTab(id)}
             style={{
               background: subTab === id ? 'var(--accent)' : 'var(--surface-alt)',
@@ -897,27 +918,60 @@ function TemplatesTab() {
       </div>
 
       {subTab === 'equipment' && (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>{['Nafn', 'Flokkur', 'Framleiðandi', 'Líkan', 'Lýsing'].map(h => <th key={h} style={head}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {eqTemplates.length === 0 && (
-                <tr><td colSpan={5} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin tækjasniðmát</td></tr>
-              )}
-              {eqTemplates.map((t, i) => (
-                <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
-                  <td style={{ ...cell, fontWeight: 600 }}>{t.name}</td>
-                  <td style={{ ...cell, color: 'var(--muted)', fontSize: '11px' }}>{t.category}</td>
-                  <td style={{ ...cell }}>{t.manufacturer ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px' }}>{t.model ?? '—'}</td>
-                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.description ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div style={{ marginBottom: 'var(--space-3)' }}>
+            <button type="button" onClick={handleNewTemplate}
+              style={{ padding: '5px 14px', fontSize: '12px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+              + Nýtt signal-sniðmát
+            </button>
+          </div>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>{['Nafn', 'Gerð', 'Framleiðandi', 'Líkan', 'Lýsing'].map(h => <th key={h} style={head}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {eqCatalog.length === 0 && eqSignalTemplates.length === 0 && (
+                  <tr><td colSpan={5} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin tækjasniðmát</td></tr>
+                )}
+                {eqCatalog.map((t, i) => (
+                  <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                    <td style={{ ...cell, fontWeight: 600 }}>{t.name}</td>
+                    <td style={{ ...cell }}>
+                      <span style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: '999px', color: 'var(--text-secondary)' }}>Product catalog</span>
+                    </td>
+                    <td style={cell}>{t.manufacturer ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px' }}>{t.model ?? '—'}</td>
+                    <td style={{ ...cell, color: 'var(--muted)' }}>{t.description ?? '—'}</td>
+                  </tr>
+                ))}
+                {eqSignalTemplates.map((t, i) => (
+                  <tr key={t.id}
+                    style={{ background: i % 2 === 0 ? 'var(--bg-subtle)' : 'transparent', cursor: 'pointer' }}
+                    onClick={async () => {
+                      try {
+                        const loaded = await loadEquipmentTemplate(api, t.id);
+                        setEditingFile(loaded);
+                      } catch {
+                        alert('Villa við að hlaða sniðmáti. Reyndu aftur.');
+                      }
+                    }}
+                  >
+                    <td style={{ ...cell, fontWeight: 600 }}>{t.name}</td>
+                    <td style={cell}>
+                      <span style={{ fontSize: '10px', padding: '2px 6px', background: 'color-mix(in srgb, var(--accent) 15%, transparent)', border: '1px solid var(--accent)', borderRadius: '999px', color: 'var(--accent)' }}>
+                        Sniðmát{t.iec61850_edition ? ` Ed${t.iec61850_edition}` : ''} · {t.signals.length} merki
+                      </span>
+                    </td>
+                    <td style={cell}>{t.manufacturer ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px' }}>{t.model ?? '—'}</td>
+                    <td style={{ ...cell, color: 'var(--muted)' }}>{t.description ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {subTab === 'bay' && (
@@ -933,14 +987,27 @@ function TemplatesTab() {
               {bayTemplates.map((t, i) => (
                 <tr key={t.template_name} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
                   <td style={{ ...cell, fontWeight: 600 }}>{t.template_name}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent)' }}>{t.display_id}</td>
-                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.signals.length}</td>
-                  <td style={{ ...cell, color: 'var(--muted)' }}>{t.equipment_codes.length > 0 ? t.equipment_codes.join(', ') : '—'}</td>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px' }}>{t.display_id}</td>
+                  <td style={cell}>{t.signals.length}</td>
+                  <td style={cell}>{t.equipment_codes.join(', ') || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {editingFile && (
+        <EquipmentTemplateEditor
+          file={editingFile}
+          library={signalLibrary}
+          onSaved={updated => {
+            setEqSignalTemplates(prev => prev.map(t => t.id === updated.template.id ? updated.template : t));
+            setEditingFile(updated);
+          }}
+          onDeleted={id => setEqSignalTemplates(prev => prev.filter(t => t.id !== id))}
+          onClose={() => setEditingFile(null)}
+        />
       )}
     </div>
   );
