@@ -295,8 +295,8 @@ export function ProjectView() {
       const result = parseModel(xmlText);
       if (result.error) { alert(result.error); return; }
       const { fcda, iedName, manufacturer, typeCode, configVersion } = result;
-      const expectedName = eq.ied_name?.trim() || eq.code;
-      if (iedName && expectedName && iedName !== expectedName) {
+      const expectedName = eq.code;
+      if (iedName && iedName !== expectedName) {
         setIedMismatch({ eq, fcda, iedName });
         return;
       }
@@ -913,7 +913,7 @@ export function ProjectView() {
             <div style={{ fontWeight: 600, marginBottom: 'var(--space-3)' }}>IED nafn passar ekki</div>
             <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
               <div>Nafn í skrá: <strong style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{iedMismatch.iedName}</strong></div>
-              <div>Tech key tækis: <strong style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{iedMismatch.eq.ied_name?.trim() || iedMismatch.eq.code}</strong></div>
+              <div>Tech key tækis: <strong style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{iedMismatch.eq.code}</strong></div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <Button onClick={handleMismatchUseFileName}>Nota nafn úr skrá og uppfæra tæki</Button>
