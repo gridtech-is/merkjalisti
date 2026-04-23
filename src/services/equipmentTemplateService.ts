@@ -1,21 +1,10 @@
 // src/services/equipmentTemplateService.ts
 import type { GitHubApi } from '../github/api';
-import type { BaySignal, EquipmentTemplate, EquipmentTemplateSignal } from '../types';
-
-function uuid(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
+import type { BaySignal, EquipmentTemplate } from '../types';
 
 export interface EquipmentTemplateFile {
   template: EquipmentTemplate;
   sha: string;
-}
-
-function templatePath(id: string): string {
-  return `data/equipment_templates/${id}.json`;
 }
 
 export async function listEquipmentTemplates(_api: GitHubApi): Promise<EquipmentTemplate[]> {
@@ -61,5 +50,3 @@ export function applyTemplateToBay(
   throw new Error('not implemented');
 }
 
-export { uuid, templatePath };
-export type { EquipmentTemplateSignal };
