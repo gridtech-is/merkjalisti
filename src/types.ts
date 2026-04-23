@@ -90,7 +90,8 @@ export interface Equipment {
   // IED fields
   ied_name: string | null;       // IEC 61850 IED name
   manufacturer: string | null;
-  model: string | null;
+  model: string | null;          // device type, e.g. "REC670"
+  config_version: string | null; // SCL configVersion attribute
   template_id: string | null;
   // Common
   description: string;

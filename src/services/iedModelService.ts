@@ -27,13 +27,29 @@ export function flattenIedModel(ied: ScdIed): IedFcda[] {
   return result;
 }
 
-export function parseModel(xmlText: string): { fcda: IedFcda[]; iedName: string; error?: string } {
+export interface ParsedIedMeta {
+  fcda: IedFcda[];
+  iedName: string;
+  manufacturer: string;
+  typeCode: string;
+  configVersion: string;
+  error?: string;
+}
+
+export function parseModel(xmlText: string): ParsedIedMeta {
   const { ieds, errors } = parseScd(xmlText);
   if (ieds.length === 0) {
-    return { fcda: [], iedName: '', error: errors[0] ?? 'Engin IED með nafn fannst.' };
+    return { fcda: [], iedName: '', manufacturer: '', typeCode: '', configVersion: '', error: errors[0] ?? 'Engin IED með nafn fannst.' };
   }
-  const ied = ieds[0];
-  return { fcda: flattenIedModel(ied), iedName: ied.name };
+  // Pick the IED with the most LDs — avoids template/stub IEDs in multi-IED files
+  const ied = ieds.reduce((best, cur) => cur.lds.length > best.lds.length ? cur : best, ieds[0]);
+  return {
+    fcda: flattenIedModel(ied),
+    iedName: ied.name,
+    manufacturer: ied.manufacturer,
+    typeCode: ied.model,
+    configVersion: ied.configVersion,
+  };
 }
 
 export async function saveModel(
@@ -61,7 +77,7 @@ export async function parseAndSaveModel(
   projectId: string,
   equipmentId: string,
   xmlText: string,
-): Promise<{ fcda: IedFcda[]; iedName: string; error?: string }> {
+): Promise<ParsedIedMeta> {
   const result = parseModel(xmlText);
   if (result.error) return result;
   await saveModel(api, projectId, equipmentId, result.fcda, result.iedName);

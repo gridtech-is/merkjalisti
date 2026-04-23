@@ -27,7 +27,7 @@ interface Props {
 export function EquipmentList({ equipment, onChange }: Props) {
   const add = () => {
     onChange([...equipment, {
-      id: uuid(), category: 'apparatus', type: 'Aflrofi', code: '', ied_name: null, manufacturer: null, model: null, template_id: null, description: '',
+      id: uuid(), category: 'apparatus', type: 'Aflrofi', code: '', ied_name: null, manufacturer: null, model: null, config_version: null, template_id: null, description: '',
     }]);
   };
 

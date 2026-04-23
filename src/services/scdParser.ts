@@ -24,10 +24,11 @@ export interface ScdLd {
 }
 
 export interface ScdIed {
-  name: string;         // IED@name  (IEC 61850 IED name, e.g. "Q0IED")
-  desc: string;         // IED@desc
-  manufacturer: string; // IED@manufacturer
-  model: string;        // IED@type
+  name: string;          // IED@name  (IEC 61850 IED name, e.g. "Q0IED")
+  desc: string;          // IED@desc
+  manufacturer: string;  // IED@manufacturer
+  model: string;         // IED@type  (device type, e.g. "REC670")
+  configVersion: string; // IED@configVersion
   lds: ScdLd[];
 }
 
@@ -198,6 +199,7 @@ export function parseScd(xmlText: string): ScdParseResult {
       desc: iedEl.getAttribute('desc') ?? '',
       manufacturer: iedEl.getAttribute('manufacturer') ?? '',
       model: iedEl.getAttribute('type') ?? '',
+      configVersion: iedEl.getAttribute('configVersion') ?? '',
       lds,
     });
   });

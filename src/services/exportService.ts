@@ -69,6 +69,7 @@ export function importEquipmentFromExcel(file: File): Promise<Equipment[]> {
               ied_name: null,
               manufacturer: null,
               model: null,
+              config_version: null,
               template_id: null,
               description: String(row[2] ?? '').trim(),
             });
@@ -89,6 +90,7 @@ export function importEquipmentFromExcel(file: File): Promise<Equipment[]> {
               ied_name: String(row[1] ?? '').trim() || null,
               manufacturer: String(row[2] ?? '').trim() || null,
               model: String(row[3] ?? '').trim() || null,
+              config_version: null,
               template_id: null,
               description: String(row[4] ?? '').trim(),
             });

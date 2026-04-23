@@ -80,6 +80,7 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
       ied_name: ied.name,
       manufacturer: ied.manufacturer || null,
       model: ied.model || null,
+      config_version: ied.configVersion || null,
       template_id: null,
       description: ied.desc || '',
     }));

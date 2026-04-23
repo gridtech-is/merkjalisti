@@ -73,7 +73,7 @@ function PhaseBar({ phase, onAdvance, onRegress, disabled }: { phase: ProjectPha
 }
 
 function emptyApparatus(code: string, type: ApparatusType, desc: string): Equipment {
-  return { id: uuid(), category: 'apparatus', code, type, ied_name: null, manufacturer: null, model: null, template_id: null, description: desc };
+  return { id: uuid(), category: 'apparatus', code, type, ied_name: null, manufacturer: null, model: null, config_version: null, template_id: null, description: desc };
 }
 
 function emptyIED(code: string, iedName: string, tmpl: EquipmentTemplate | null, desc: string): Equipment {
@@ -83,6 +83,7 @@ function emptyIED(code: string, iedName: string, tmpl: EquipmentTemplate | null,
     ied_name: iedName || null,
     manufacturer: tmpl?.manufacturer ?? null,
     model: tmpl?.model ?? null,
+    config_version: null,
     template_id: tmpl?.id ?? null,
     description: desc || tmpl?.description || '',
   };
@@ -291,8 +292,9 @@ export function ProjectView() {
     setModelUploading(eq.id);
     try {
       const xmlText = await file.text();
-      const { fcda, iedName, error } = parseModel(xmlText);
-      if (error) { alert(error); return; }
+      const result = parseModel(xmlText);
+      if (result.error) { alert(result.error); return; }
+      const { fcda, iedName, manufacturer, typeCode, configVersion } = result;
       const expectedName = eq.ied_name?.trim() || eq.code;
       if (iedName && expectedName && iedName !== expectedName) {
         setIedMismatch({ eq, fcda, iedName });
@@ -300,6 +302,11 @@ export function ProjectView() {
       }
       await saveModel(api, projectId, eq.id, fcda, iedName);
       setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+      const patch: Partial<Equipment> = {};
+      if (manufacturer) patch.manufacturer = manufacturer;
+      if (typeCode) patch.model = typeCode;
+      if (configVersion) patch.config_version = configVersion;
+      if (Object.keys(patch).length > 0) await handleUpdate(eq.id, patch);
     } finally {
       setModelUploading(null);
     }
@@ -771,7 +778,7 @@ export function ProjectView() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Tech key', 'IED nafn', 'Sniðmát', 'Framleiðandi', 'Líkan', 'Lýsing', ''].map(h => <th key={h} style={headStyle}>{h}</th>)}
+                  {['Tech key', 'IED nafn', 'Sniðmát', 'Framleiðandi', 'Tegund', 'Versía', 'Lýsing', ''].map(h => <th key={h} style={headStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -818,6 +825,12 @@ export function ProjectView() {
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { model: e.target.value || null }); }}
                         onChange={() => {}} />
                     </td>
+                    <td style={{ ...cellStyle, minWidth: '100px' }}>
+                      <input style={editInput} defaultValue={eq.config_version ?? ''} key={`icv-${eq.id}`}
+                        placeholder="ver1.2.3" onFocus={focusInput}
+                        onBlur={e => { blurInput(e); handleUpdate(eq.id, { config_version: e.target.value || null }); }}
+                        onChange={() => {}} />
+                    </td>
                     <td style={{ ...cellStyle, width: '100%' }}>
                       <input style={editInput} defaultValue={eq.description} key={`id-${eq.id}`}
                         placeholder="Lýsing" onFocus={focusInput}
@@ -827,7 +840,7 @@ export function ProjectView() {
                     <td style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         <label style={{ cursor: 'pointer' }}>
-                          <input type="file" accept=".icd,.scd,.xml" style={{ display: 'none' }}
+                          <input type="file" accept=".icd,.iid,.cid,.scd,.xml" style={{ display: 'none' }}
                             onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadIcd(eq, f); e.target.value = ''; }} />
                           <span style={{
                             display: 'inline-block', padding: '3px 8px', fontSize: '11px',
@@ -869,7 +882,7 @@ export function ProjectView() {
                     <input value={newIName} onChange={e => setNewIName(e.target.value)}
                       placeholder="Q0IED" style={{ ...inputStyle, fontFamily: 'monospace', width: '90px' }} />
                   </td>
-                  <td style={{ padding: '6px 10px' }} colSpan={3}>
+                  <td style={{ padding: '6px 10px' }} colSpan={4}>
                     <select value={newITemplateId} onChange={e => setNewITemplateId(e.target.value)}
                       style={{ ...inputStyle, cursor: 'pointer', width: '100%' }}>
                       <option value="">— Ekkert sniðmát —</option>
