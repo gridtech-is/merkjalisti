@@ -106,7 +106,7 @@ function expandDa(
   result: ScdDoDa[],
   depth: number,
 ): void {
-  if (depth > 1) return;
+  if (depth > 3) return;
   const daType = daTypes.get(daTypeId);
   if (!daType) return;
   for (const bda of daType.bdas) {
