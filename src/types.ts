@@ -32,11 +32,12 @@ export interface SignalLibraryEntry {
   hmi_event: boolean;
   is_alarm: boolean;
   alarm_class: AlarmClass | null;
+  state_alarm_map?: StateAlarmMap | null;
   to_control_room: boolean;
   source_type: SourceType;
-  iec61850_ld: string | null;
   iec61850_ln: string | null;
-  iec61850_do_da: string | null;
+  iec61850_do: string | null;
+  iec61850_da: string | null;
   iec61850_fc: string | null;
   iec61850_cdc: string | null;
   iec61850_dataset: string | null;
@@ -133,7 +134,8 @@ export interface BaySignal {
   // IEC 61850 — from signal library
   iec61850_ld: string | null;          // Logical Device
   iec61850_ln: string | null;          // Logical Node class
-  iec61850_do_da: string | null;       // DO & DA
+  iec61850_do: string | null;          // DO name
+  iec61850_da: string | null;          // DA name
   iec61850_fc: string | null;          // Functional Constraint
   iec61850_cdc: string | null;         // Common Data Class
   iec61850_dataset: string | null;     // Dataset
@@ -154,6 +156,19 @@ export interface BaySignal {
   review_flagged: boolean;
   review_comment: string | null;
   group_label?: string | null;
+}
+
+// ─── IED model (parsed from ICD/SCD) ─────────────────────────────────────
+
+export interface IedFcda {
+  ldInst: string;
+  prefix: string;
+  lnClass: string;
+  lnInst: string;
+  doName: string;
+  daName: string;
+  fc: string;
+  cdc: string;
 }
 
 // ─── Bay review ────────────────────────────────────────────────────────────

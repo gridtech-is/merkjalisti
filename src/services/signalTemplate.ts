@@ -14,13 +14,13 @@ const DATA_ROWS = 500;
 
 // ─── "Merki" lookup sheet ─────────────────────────────────────────────────────
 // Col: A=code  B=name_is  C=name_en  D=is_alarm  E=alarm_class  F=source_type
-//      G=iec61850_ld  H=iec61850_ln  I=iec61850_do_da  J=iec61850_fc
+//      G=iec61850_ln  H=iec61850_do  I=iec61850_da  J=iec61850_fc
 //      K=iec61850_cdc  L=iec61850_dataset
 
 function buildLookupSheet(library: SignalLibraryEntry[]): XLSX.WorkSheet {
   const headers = [
     'code', 'name_is', 'name_en', 'is_alarm', 'alarm_class', 'source_type',
-    'iec61850_ld', 'iec61850_ln', 'iec61850_do_da',
+    'iec61850_ln', 'iec61850_do', 'iec61850_da',
     'iec61850_fc', 'iec61850_cdc', 'iec61850_dataset',
   ];
   const rows = library.map(e => [
@@ -30,15 +30,15 @@ function buildLookupSheet(library: SignalLibraryEntry[]): XLSX.WorkSheet {
     e.is_alarm ? 'TRUE' : 'FALSE',
     e.alarm_class ?? '',
     e.source_type,
-    e.iec61850_ld ?? '',
     e.iec61850_ln ?? '',
-    e.iec61850_do_da ?? '',
+    e.iec61850_do ?? '',
+    e.iec61850_da ?? '',
     e.iec61850_fc ?? '',
     e.iec61850_cdc ?? '',
     e.iec61850_dataset ?? '',
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [16, 38, 38, 10, 12, 12, 14, 14, 18, 8, 12, 18].map(w => ({ wch: w }));
+  ws['!cols'] = [16, 38, 38, 10, 12, 12, 14, 14, 14, 8, 12, 18].map(w => ({ wch: w }));
   return ws;
 }
 
@@ -50,9 +50,9 @@ function buildLookupSheet(library: SignalLibraryEntry[]): XLSX.WorkSheet {
 // Col E  is_alarm          — VLOOKUP col 4
 // Col F  alarm_class       — VLOOKUP col 5
 // Col G  source_type       — VLOOKUP col 6
-// Col H  iec61850_ld       — VLOOKUP col 7
-// Col I  iec61850_ln       — VLOOKUP col 8
-// Col J  iec61850_do_da    — VLOOKUP col 9
+// Col H  iec61850_ln       — VLOOKUP col 7
+// Col I  iec61850_do       — VLOOKUP col 8
+// Col J  iec61850_da       — VLOOKUP col 9
 // Col K  iec61850_fc       — VLOOKUP col 10
 // Col L  iec61850_cdc      — VLOOKUP col 11
 // Col M  iec61850_dataset  — VLOOKUP col 12
@@ -65,7 +65,7 @@ function buildLookupSheet(library: SignalLibraryEntry[]): XLSX.WorkSheet {
 const ENTRY_HEADERS = [
   'equipment_code', 'signal_name',
   'name_is', 'name_en', 'is_alarm', 'alarm_class', 'source_type',
-  'iec61850_ld', 'iec61850_ln', 'iec61850_do_da',
+  'iec61850_ln', 'iec61850_do', 'iec61850_da',
   'iec61850_fc', 'iec61850_cdc', 'iec61850_dataset',
   'iec61850_ied', 'iec61850_ln_prefix', 'iec61850_ln_inst',
   'iec61850_rcb', 'iec61850_dataset_entry',
@@ -78,9 +78,9 @@ const LOOKUP_COLS: Array<[number, number]> = [
   [4, 4],   // E — is_alarm
   [5, 5],   // F — alarm_class
   [6, 6],   // G — source_type
-  [7, 7],   // H — iec61850_ld
-  [8, 8],   // I — iec61850_ln
-  [9, 9],   // J — iec61850_do_da
+  [7, 7],   // H — iec61850_ln
+  [8, 8],   // I — iec61850_do
+  [9, 9],   // J — iec61850_da
   [10, 10], // K — iec61850_fc
   [11, 11], // L — iec61850_cdc
   [12, 12], // M — iec61850_dataset
@@ -155,14 +155,15 @@ export function generateTemplateFromScd(ieds: ScdIed[], fileName: string): void 
     'iec61850_ln',           // E — from SCD
     'iec61850_ln_prefix',    // F — from SCD
     'iec61850_ln_inst',      // G — from SCD
-    'iec61850_do_da',        // H — from SCD DataTypeTemplates (may be empty)
-    'iec61850_fc',           // I — from SCD DataTypeTemplates (may be empty)
-    'iec61850_cdc',          // J — from SCD DataTypeTemplates (may be empty)
-    'name_is',               // K — user fills in (or import from signal library later)
-    'name_en',               // L — user fills in
-    'is_alarm',              // M — user fills in
-    'alarm_class',           // N — user fills in
-    'source_type',           // O — default IED
+    'iec61850_do',           // H — from SCD DataTypeTemplates (may be empty)
+    'iec61850_da',           // I — from SCD DataTypeTemplates (may be empty)
+    'iec61850_fc',           // J — from SCD DataTypeTemplates (may be empty)
+    'iec61850_cdc',          // K — from SCD DataTypeTemplates (may be empty)
+    'name_is',               // L — user fills in (or import from signal library later)
+    'name_en',               // M — user fills in
+    'is_alarm',              // N — user fills in
+    'alarm_class',           // O — user fills in
+    'source_type',           // P — default IED
   ];
 
   const rows: (string | number)[][] = [SCD_HEADERS];
@@ -181,11 +182,12 @@ export function generateTemplateFromScd(ieds: ScdIed[], fileName: string): void 
               ln.lnClass,                  // E iec61850_ln
               ln.prefix,                   // F iec61850_ln_prefix
               ln.inst,                     // G iec61850_ln_inst
-              `${doda.doName}.${doda.daName}`, // H iec61850_do_da
-              doda.fc,                     // I iec61850_fc
-              doda.cdc,                    // J iec61850_cdc
-              '',                          // K name_is
-              '',                          // L name_en
+              doda.doName,                 // H iec61850_do
+              doda.daName,                 // I iec61850_da
+              doda.fc,                     // J iec61850_fc
+              doda.cdc,                    // K iec61850_cdc
+              '',                          // L name_is
+              '',                          // M name_en
               '',                          // M is_alarm
               '',                          // N alarm_class
               'IED',                       // O source_type

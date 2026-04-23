@@ -25,118 +25,86 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 ## Data repo structure
 `gridtech-is/merkjalisti-data`:
 - `data/signal_states.json` — Sinalmatrix state types
-- `data/signal_library.json` — signal library (381 entries)
-- `data/equipment_templates.json` — 16 product-catalog IED templates (flat)
+- `data/signal_library.json` — signal library
+- `data/equipment_templates.json` — product-catalog IED templates (flat)
 - `templates/bays/` — bay signal templates
 - `projects/{uuid}/` — per-project data (project.json, bays/, changelog.json, testing.json, station_signals.json)
+- `projects/{uuid}/ied_models/{equipment.id}.json` — parsed IED models (IedFcda[])
 
 ## Tveir aðskildir gagnageymslur
-- **App repo (þessi):** `/Users/teddi/Documents/merkjalisti/` — React kóði
-- **Data repo:** `/Users/teddi/Documents/Merkja listi/merkjalisti-data/` — `gridtech-is/merkjalisti-data`, JSON gögn
+- **App repo (þessi):** `C:\Users\TheodorJónsson\Desktop\Merkjalisti\merkjalisti\`
+- **Data repo:** `C:\Users\TheodorJónsson\Desktop\Merkjalisti\merkjalisti-data\` — `gridtech-is/merkjalisti-data`
 
 ## Plön og hönnun
-Plön eru geymd í `docs/superpowers/`:
-- `docs/superpowers/specs/` — hönnunarskjöl (áður en implementation plan er skrifað)
-- `docs/superpowers/plans/` — implementation plans með tasks og TDD skrefum
+- `docs/superpowers/specs/` — hönnunarskjöl
+- `docs/superpowers/plans/` — implementation plans
 
 ---
 
-## Staða núna — 2026-04-17
+## Staða núna — 2026-04-23
 
 ### Klárað og committað
-- **Plan 3 — Stöðvarmerki + Heildar listi tabs** ✅ (review workflow, station_signals.json, migration)
+- **Plan 1–3** ✅ (review workflow, station_signals.json, migration)
 - **LibraryView** ✅ (Merkjasafn, Stöður, Sniðmát flipar)
-- **Phase back navigation** ✅ (← takki í PhaseBar)
 - **OverviewTab** ✅ (aggregated signal listi + Excel export)
 - **StationSignalsTab** ✅ (review workflow fyrir stöðvarmerki)
+- **Plan "Stöðvar-númer"** ✅ — `Project.station_number` single source of truth, cascade á `display_id`
+- **Undo/redo stack** ✅ — Ctrl+Z / Ctrl+Shift+Z í BayView
+- **Changelog revert** ✅ — afturkalla `FIELD_CHANGED` breytingar úr breytingasögu
 
-### Óklárað (WIP — committað sem "WIP" svo hægt sé að sækja)
-- **SCD import** — `src/components/ImportScdModal.tsx`, `src/services/scdParser.ts`, `src/services/signalTemplate.ts`
-  - Virkni: importa IEC 61850 SCD skrá, draga út IEDs, búa til Excel template með VLOOKUP í Merkjasafn
-  - Tengt inn í ProjectView (línur 10, 574)
-  - **Eftir:** prófa end-to-end með raunverulegri SCD skrá, staðfesta að Excel template virki rétt í Excel/LibreOffice
+### Klárað en ekki committað (þessi session)
+- **IEC 61850 restructure** — `iec61850_do_da` → `iec61850_do` + `iec61850_da`, `iec61850_ld` fjarlægt úr `SignalLibraryEntry`
+- **IEC 61850 dálkar sameinaðir** — 13 dálkar í SignalTable: IED | ldInst | Prefix | lnClass | lnInst | doName | daName | FC | CDC | Dataset | RCB | DSE | Ref.
+- **IED model import** — hlaða upp ICD/IID skrá í Tæki flipann, vistað sem `IedFcda[]` á GitHub
+- **SCD parser uppfærsla** — `DAType`/`BDA` þáttur, structured DAs með punkt-notation (`Pos.Oper.ctlVal`)
+- **FCDA picker** — `≡` takki á IED reit, leitanlegur dropdown, fyllir IEC svæði sjálfkrafa
+- **Datalist autocomplete** — ldInst/lnClass/doName/daName reitir sýna gildi úr módeli, context-aware síun
+- **Auto-fill** — þegar lnClass valið með eitt ldInst/prefix: fyllir sjálfkrafa
+- **Block edit batch fix** — `handleBatchUpdate` í BayView, lagar bug þar sem aðeins fyrsta lína uppfærðist
+- **ICD upload nafnaprófun** — 3-valkosta gluggi þegar IED nafn í skrá passar ekki við tæki
+- **Sort by type** — ↕ Raða takki í BayView
+- **Duplicate count** — × [fjöldi] í afrita valin
 
-### Næst á dagskrá
-- **Plan 4 — Equipment templates með signal auto-populate**
-  - Hönnun: `docs/superpowers/specs/2026-04-17-plan4-equipment-templates-design.md` ✅
-  - Implementation plan: **ekki skrifað ennþá** ← byrja hér
-  - 6–7 tasks áætlað (sjá kafla 9 í spec): types → applyTemplateToBay (TDD) → CRUD → Editor → ApplyModal → Save-as-template modal → smoke test
+### Óklárað / framundan
+- **SCD import end-to-end próf** — `ImportScdModal.tsx` tengt en ekki prófað með raunverulegri skrá
+- **Plan 4 — Equipment templates** — spec skrifað (`docs/superpowers/specs/2026-04-17-plan4-equipment-templates-design.md`), implementation plan vantar
 
-### Hvar halda áfram
-1. Ef þú vilt klára **SCD import**: prófa með raunverulegri SCD skrá í dev, staðfesta UI flow
-2. Ef þú vilt fara í **Plan 4**: lestu spec-ið og bið Claude um "skrifaðu implementation plan fyrir plan 4" — notar `superpowers:writing-plans`
-3. Önnur óklárið plön: `docs/superpowers/plans/2026-04-16-workflow-features.md` og `2026-04-17-library-view.md` (elstu delar gætu verið búnir)
+### IEC 61850 gagnalíkan
+- `SignalLibraryEntry` hefur: `iec61850_ln`, `iec61850_do`, `iec61850_da`, `iec61850_fc`, `iec61850_cdc`, `iec61850_dataset` (ekki `iec61850_ld` — instance-specific)
+- `BaySignal` hefur öll svæðin + `iec61850_ld`, `iec61850_ied`, `iec61850_ln_prefix`, `iec61850_ln_inst`, `iec61850_rcb`, `iec61850_dataset_entry`
+- IED módel geymt sem `IedFcda[]` í `projects/{id}/ied_models/{equipment.id}.json`
 
 ### Git staða
-- App repo (`merkjalisti`): á `main`, push-að á `origin/main` eftir þessa session
-- Data repo (`merkjalisti-data`): clean, up-to-date með `origin/main`
+- App repo: á `main`, **ócommittuð breyting** (~1115 línur) frá þessari session — commit áður en push
+- Data repo: clean
 
 ### Athugið á nýrri tölvu
 ```bash
 git clone git@github.com:gridtech-is/merkjalisti.git
 cd merkjalisti
 npm install
-# Og í systur-möppu:
 cd ..
 git clone git@github.com:gridtech-is/merkjalisti-data.git
 ```
-GitHub token þarf að setja í localStorage í appinu (útskýrt í `src/github/token.ts`).
+GitHub token þarf að setja í localStorage í appinu.
 
 ---
 
-## Claude Code uppsetning fyrir þetta verkefni
+## Claude Code uppsetning
 
-Svo að Claude Code á nýrri tölvu virki eins og hér, setjið upp eftirfarandi.
-
-### 1. Plugins / skills sem VERÐUR að hafa
-
-**Superpowers plugin** (mest notað í þessu verkefni):
 ```
 /plugin install superpowers
-```
-Veitir þessi skills sem Claude notar reglulega hér:
-- `superpowers:brainstorming` — nota **alltaf** áður en nýtt feature er hannað
-- `superpowers:writing-plans` — skrifa implementation plan úr spec (næsta skref fyrir Plan 4)
-- `superpowers:executing-plans` — framkvæma plan með review checkpoints
-- `superpowers:test-driven-development` — TDD er venjan hér (sjá `*.test.ts` skrár)
-- `superpowers:systematic-debugging` — fyrir bug fixes
-- `superpowers:verification-before-completion` — keyra `npm run build` + `npm test` áður en sagt er "búið"
-- `superpowers:using-git-worktrees` — fyrir einangrað feature work
-
-**Feature-dev plugin** (fyrir stór features):
-```
 /plugin install feature-dev
+/plugin install playwright
 ```
-Veitir `feature-dev:code-explorer`, `feature-dev:code-architect`, `feature-dev:code-reviewer` — gott fyrir Plan 4 implementation.
 
-**Code-review plugin**:
-```
-/plugin install code-review
-```
-`code-review:code-review` — nota áður en merge á main.
-
-### 2. MCP servers sem mælt er með
-
-- **context7** — sækir nýjustu docs fyrir React, Vite, React Router, Octokit, xlsx. Nauðsynlegt þegar spurt er um library API.
-- **playwright** — browser automation. Gagnlegt til að prófa SCD import end-to-end og UI flow í Plan 4.
-
-### 3. Mín ráðlegging fyrir næstu session
-
-**Ef næsta skref er Plan 4:**
-1. Byrjið á `superpowers:writing-plans` með spec-ið sem inntak:
-   > „Skrifaðu implementation plan fyrir `docs/superpowers/specs/2026-04-17-plan4-equipment-templates-design.md`"
-2. Plan fer í `docs/superpowers/plans/2026-04-17-plan4-equipment-templates.md`
-3. Svo `superpowers:executing-plans` til að framkvæma með TDD og checkpoints
-
-**Ef næsta skref er SCD import klárun:**
-1. `npm run dev`, opna app, prófa með raunverulegri SCD skrá
-2. Nota **playwright MCP** til að automatíta UI test
-3. Laga og committa
-
-### 4. Vinnuferli sem Teddi kann að meta
+### Vinnuferli
 - **Íslenska** í öllum commits, plans, og samtölum
 - **Spyrja áður en committað** / push-að / óafturkræfar aðgerðir
-- **Gera ekki meira en beðið er um** — engin scope creep
-- **Beint og hnitmiðað** — engar óþarfa útskýringar
-- **CSS variables** (engin CSS modules) — sjá `src/design-tokens.css`
-- **Commits á íslensku**, short subject + body sem útskýrir *af hverju*
+- **Engin scope creep** — gera ekki meira en beðið er um
+- **CSS variables** (engin CSS modules)
+- **Commits á íslensku**, short subject + body
+
+### TDD og próf
+- `npm run build` + `npm test` áður en sagt er "búið"
+- Test skrár: `*.test.ts` í `src/`

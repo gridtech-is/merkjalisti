@@ -127,7 +127,8 @@ const HEADERS = [
   'IEC LN',            // iec61850_ln
   'IEC LN Prefix',     // iec61850_ln_prefix
   'IEC LN Inst',       // iec61850_ln_inst
-  'IEC DO/DA',         // iec61850_do_da
+  'IEC doName',        // iec61850_do
+  'IEC daName',        // iec61850_da
   'IEC FC',            // iec61850_fc
   'IEC CDC',           // iec61850_cdc
   'IEC Dataset',       // iec61850_dataset
@@ -159,7 +160,8 @@ function signalRow(bayDisplayId: string, sig: BaySignal): (string | number | boo
     sig.iec61850_ln ?? '',
     sig.iec61850_ln_prefix ?? '',
     sig.iec61850_ln_inst ?? '',
-    sig.iec61850_do_da ?? '',
+    sig.iec61850_do ?? '',
+    sig.iec61850_da ?? '',
     sig.iec61850_fc ?? '',
     sig.iec61850_cdc ?? '',
     sig.iec61850_dataset ?? '',

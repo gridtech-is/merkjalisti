@@ -37,8 +37,8 @@ export function SignalsView() {
   const [newOpen, setNewOpen] = useState(false);
   const emptyNew = (): Partial<SignalLibraryEntry> => ({
     code: '', name_is: '', name_en: null, is_alarm: false, alarm_class: null,
-    source_type: 'IED', iec61850_ld: null, iec61850_ln: null,
-    iec61850_do_da: null, iec61850_fc: null, iec61850_cdc: null,
+    source_type: 'IED', iec61850_ln: null,
+    iec61850_do: null, iec61850_da: null, iec61850_fc: null, iec61850_cdc: null,
     iec61850_dataset: null, description_is: null, state_id: null,
     signal_type: null, units: null, severity_code: null,
     hmi_event: false, to_control_room: false, comments: null,
@@ -82,9 +82,9 @@ export function SignalsView() {
     alarm_class: form.is_alarm ? (form.alarm_class ?? 1) : null,
     to_control_room: form.to_control_room ?? false,
     source_type: (form.source_type ?? 'IED') as SourceType,
-    iec61850_ld: form.iec61850_ld || null,
     iec61850_ln: form.iec61850_ln || null,
-    iec61850_do_da: form.iec61850_do_da || null,
+    iec61850_do: form.iec61850_do || null,
+    iec61850_da: form.iec61850_da || null,
     iec61850_fc: form.iec61850_fc || null,
     iec61850_cdc: form.iec61850_cdc || null,
     iec61850_dataset: form.iec61850_dataset || null,
@@ -163,9 +163,10 @@ export function SignalsView() {
     iec61850_ln_inst: null,
     iec61850_rcb: null,
     iec61850_dataset_entry: null,
-    iec61850_ld: e.iec61850_ld ?? null,
+    iec61850_ld: null,
     iec61850_ln: e.iec61850_ln ?? null,
-    iec61850_do_da: e.iec61850_do_da ?? null,
+    iec61850_do: e.iec61850_do ?? null,
+    iec61850_da: e.iec61850_da ?? null,
     iec61850_fc: e.iec61850_fc ?? null,
     iec61850_cdc: e.iec61850_cdc ?? null,
     iec61850_dataset: e.iec61850_dataset ?? null,
@@ -200,9 +201,9 @@ export function SignalsView() {
             is_alarm: updatedEntry.is_alarm,
             alarm_class: updatedEntry.alarm_class ?? null,
             source_type: updatedEntry.source_type,
-            iec61850_ld: updatedEntry.iec61850_ld ?? null,
             iec61850_ln: updatedEntry.iec61850_ln ?? null,
-            iec61850_do_da: updatedEntry.iec61850_do_da ?? null,
+            iec61850_do: updatedEntry.iec61850_do ?? null,
+            iec61850_da: updatedEntry.iec61850_da ?? null,
             iec61850_fc: updatedEntry.iec61850_fc ?? null,
             iec61850_cdc: updatedEntry.iec61850_cdc ?? null,
             iec61850_dataset: updatedEntry.iec61850_dataset ?? null,
@@ -373,9 +374,9 @@ export function SignalsView() {
                       {e.is_alarm && e.alarm_class ? `F${e.alarm_class}` : '—'}
                     </td>
                     <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)' }}>{e.source_type}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_ld ?? '—'}</td>
                     <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_ln ?? '—'}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_do_da ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_do ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_da ?? '—'}</td>
                     <td style={{ ...cell, whiteSpace: 'nowrap', display: 'flex', gap: '4px' }} onClick={ev => ev.stopPropagation()}>
                       <Button size="sm" variant="ghost" onClick={() => { setAdding(e); setTargetBayId(''); setEquipmentCode(''); }}>
                         + Bay
@@ -461,9 +462,9 @@ export function SignalsView() {
                 ['Kóði *', 'code', 'monospace'],
                 ['Heiti (IS) *', 'name_is', 'inherit'],
                 ['Heiti (EN)', 'name_en', 'inherit'],
-                ['IEC 61850 LD', 'iec61850_ld', 'monospace'],
                 ['IEC 61850 LN', 'iec61850_ln', 'monospace'],
-                ['DO/DA', 'iec61850_do_da', 'monospace'],
+                ['doName', 'iec61850_do', 'monospace'],
+                ['daName', 'iec61850_da', 'monospace'],
                 ['FC', 'iec61850_fc', 'monospace'],
                 ['CDC', 'iec61850_cdc', 'monospace'],
                 ['Dataset', 'iec61850_dataset', 'monospace'],

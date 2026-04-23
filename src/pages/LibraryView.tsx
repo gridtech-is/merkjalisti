@@ -4,7 +4,7 @@ import { useApi } from '../context/ApiContext';
 import { listProjects } from '../services/projectService';
 import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
 import { Button } from '../components/ui';
-import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate } from '../types';
+import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap } from '../types';
 
 type LibTab = 'signals' | 'states' | 'templates';
 
@@ -31,12 +31,17 @@ function SignalsTab() {
   const [targetBayId, setTargetBayId] = useState('');
   const [equipmentCode, setEquipmentCode] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditField, setBulkEditField] = useState('source_type');
+  const [bulkEditValue, setBulkEditValue] = useState('IED');
+  const [bulkEditing, setBulkEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [signalStates, setSignalStates] = useState<SignalState[]>([]);
 
   const emptyNew = (): Partial<SignalLibraryEntry> => ({
     code: '', name_is: '', name_en: null, is_alarm: false, alarm_class: null,
-    source_type: 'IED', iec61850_ld: null, iec61850_ln: null,
-    iec61850_do_da: null, iec61850_fc: null, iec61850_cdc: null,
+    state_alarm_map: null, source_type: 'IED', iec61850_ln: null,
+    iec61850_do: null, iec61850_da: null, iec61850_fc: null, iec61850_cdc: null,
     iec61850_dataset: null, description_is: null, state_id: null,
     signal_type: null, units: null, severity_code: null,
     hmi_event: false, to_control_room: false, comments: null,
@@ -52,7 +57,9 @@ function SignalsTab() {
     Promise.all([
       api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
       listProjects(api),
-    ]).then(([{ data: lib, sha }, projectList]) => {
+      api.readJson<SignalState[]>('data/signal_states.json'),
+    ]).then(([{ data: lib, sha }, projectList, { data: states }]) => {
+      setSignalStates(states);
       const needsMigration = lib.some(e => !e.id);
       if (needsMigration) {
         const migrated = lib.map(e => e.id ? e : { ...e, id: uuid() });
@@ -73,29 +80,38 @@ function SignalsTab() {
     listBays(api, selectedProjectId).then(setBays).catch(() => setBays([]));
   }, [api, selectedProjectId]);
 
-  const buildEntry = (form: Partial<SignalLibraryEntry>, existingId?: string): SignalLibraryEntry => ({
-    id: existingId ?? uuid(),
-    code: form.code?.trim().toUpperCase() ?? null,
-    name_is: form.name_is?.trim() ?? '',
-    name_en: form.name_en || null,
-    description_is: form.description_is || null,
-    state_id: form.state_id || null,
-    signal_type: form.signal_type || null,
-    units: form.units || null,
-    severity_code: form.severity_code || null,
-    hmi_event: form.hmi_event ?? false,
-    is_alarm: form.is_alarm ?? false,
-    alarm_class: form.is_alarm ? (form.alarm_class ?? 1) : null,
-    to_control_room: form.to_control_room ?? false,
-    source_type: (form.source_type ?? 'IED') as SourceType,
-    iec61850_ld: form.iec61850_ld || null,
-    iec61850_ln: form.iec61850_ln || null,
-    iec61850_do_da: form.iec61850_do_da || null,
-    iec61850_fc: form.iec61850_fc || null,
-    iec61850_cdc: form.iec61850_cdc || null,
-    iec61850_dataset: form.iec61850_dataset || null,
-    comments: form.comments || null,
-  });
+  const buildEntry = (form: Partial<SignalLibraryEntry>, existingId?: string): SignalLibraryEntry => {
+    const stateMap = form.state_id ? (form.state_alarm_map ?? null) : null;
+    const hasStateAlarm = stateMap ? Object.values(stateMap).some(cfg => cfg?.is_alarm) : false;
+    const effectiveIsAlarm = form.state_id ? hasStateAlarm : (form.is_alarm ?? false);
+    const effectiveAlarmClass = form.state_id
+      ? (hasStateAlarm ? (Object.values(stateMap ?? {}).find(cfg => cfg?.is_alarm)?.alarm_class ?? 1) : null)
+      : (effectiveIsAlarm ? (form.alarm_class ?? 1) : null);
+    return {
+      id: existingId ?? uuid(),
+      code: form.code?.trim().toUpperCase() ?? null,
+      name_is: form.name_is?.trim() ?? '',
+      name_en: form.name_en || null,
+      description_is: form.description_is || null,
+      state_id: form.state_id || null,
+      state_alarm_map: stateMap,
+      signal_type: form.signal_type || null,
+      units: form.units || null,
+      severity_code: form.severity_code || null,
+      hmi_event: form.hmi_event ?? false,
+      is_alarm: effectiveIsAlarm,
+      alarm_class: effectiveAlarmClass as AlarmClass | null,
+      to_control_room: form.to_control_room ?? false,
+      source_type: (form.source_type ?? 'IED') as SourceType,
+      iec61850_ln: form.iec61850_ln || null,
+      iec61850_do: form.iec61850_do || null,
+      iec61850_da: form.iec61850_da || null,
+      iec61850_fc: form.iec61850_fc || null,
+      iec61850_cdc: form.iec61850_cdc || null,
+      iec61850_dataset: form.iec61850_dataset || null,
+      comments: form.comments || null,
+    };
+  };
 
   const handleSaveNew = async () => {
     if (!newEntry.code?.trim() || !newEntry.name_is?.trim()) return;
@@ -135,15 +151,16 @@ function SignalsTab() {
     state_id: e.state_id ?? null,
     iec61850_ied: null, iec61850_ln_prefix: null, iec61850_ln_inst: null,
     iec61850_rcb: null, iec61850_dataset_entry: null,
-    iec61850_ld: e.iec61850_ld ?? null,
+    iec61850_ld: null,
     iec61850_ln: e.iec61850_ln ?? null,
-    iec61850_do_da: e.iec61850_do_da ?? null,
+    iec61850_do: e.iec61850_do ?? null,
+    iec61850_da: e.iec61850_da ?? null,
     iec61850_fc: e.iec61850_fc ?? null,
     iec61850_cdc: e.iec61850_cdc ?? null,
     iec61850_dataset: e.iec61850_dataset ?? null,
     is_alarm: e.is_alarm,
     alarm_class: e.alarm_class ?? null,
-    state_alarm_map: null,
+    state_alarm_map: e.state_alarm_map ?? null,
     source_type: e.source_type,
     phase_added: 'DESIGN',
     fat_tested: false, fat_tested_by: null, fat_tested_at: null, fat_result: null,
@@ -168,6 +185,28 @@ function SignalsTab() {
       setTargetBayId('');
       setEquipmentCode('');
     } finally { setSaving(false); }
+  };
+
+  const handleBulkEdit = async () => {
+    const selectedCodes = [...selected];
+    if (selectedCodes.length === 0) return;
+    setBulkEditing(true);
+    try {
+      let patch: Partial<SignalLibraryEntry> = {};
+      if (bulkEditField === 'source_type') patch = { source_type: bulkEditValue as SourceType };
+      else if (bulkEditField === 'signal_type') patch = { signal_type: bulkEditValue || null };
+      else if (bulkEditField === 'state_id') patch = { state_id: bulkEditValue || null };
+      else if (bulkEditField === 'is_alarm') {
+        const on = bulkEditValue === 'true';
+        patch = { is_alarm: on, alarm_class: on ? 1 : null };
+      }
+      const newLib = library.map(e => e.code && selectedCodes.includes(e.code) ? { ...e, ...patch } : e);
+      const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Bulk: breyta ${selectedCodes.length} merkjum`);
+      setLibrary(newLib);
+      setLibSha(sha);
+      setBulkEditOpen(false);
+      setSelected(new Set());
+    } finally { setBulkEditing(false); }
   };
 
   const q = search.toLowerCase().trim();
@@ -231,9 +270,9 @@ function SignalsTab() {
             </button>
           ))}
         </div>
+        <Button size="sm" onClick={() => { setNewOpen(true); setNewEntry(emptyNew()); }}>+ Nýtt merki</Button>
         {search && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{filtered.length} niðurstöður</span>}
         <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: 'auto' }}>{library.length} merki</span>
-        <Button size="sm" onClick={() => { setNewOpen(true); setNewEntry(emptyNew()); }}>+ Nýtt merki</Button>
       </div>
 
       {/* Bulk toolbar */}
@@ -247,6 +286,7 @@ function SignalsTab() {
         }}>
           <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{selected.size} merki valin</span>
           <Button size="sm" onClick={() => { setBulkOpen(true); setTargetBayId(''); setEquipmentCode(''); }}>+ Bæta við í reit</Button>
+          <Button size="sm" variant="ghost" onClick={() => { setBulkEditOpen(true); setBulkEditField('source_type'); setBulkEditValue('IED'); }}>✏ Breyta völdum</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Hætta við val</Button>
         </div>
       )}
@@ -258,20 +298,34 @@ function SignalsTab() {
             <thead>
               <tr>
                 <th style={head}><input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} /></th>
-                {['Kóði', 'Texti', 'Alarm', 'Fl.', 'Uppspretta', 'LD', 'LN', 'DO/DA', ''].map(h => (
+                {['Kóði', 'Merki', 'Stöður', 'Tegund', 'Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                   <th key={h} style={head}>{h}</th>
                 ))}
+                {(['lnClass', 'doName', 'daName', 'FC', 'CDC'] as string[]).map((h, i) => (
+                  <th key={`iec-${h}`} style={{ ...head, borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
+                ))}
+                <th style={head}></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>
+                <tr><td colSpan={15} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>
                   {search ? 'Ekkert fannst' : 'Tómt safn'}
                 </td></tr>
               )}
               {filtered.map((e, i) => {
                 const code = e.code ?? '';
                 const isSel = selected.has(code);
+                const st = signalStates.find(s => s.id === e.state_id);
+                const ORDER = ['00', '01', '10', '11'] as const;
+                const stateRows: { k: string; text: string }[] = st
+                  ? ORDER.flatMap(k => {
+                      const entry = st.states[k];
+                      if (!entry) return [];
+                      const text = lang === 'is' ? entry.is : entry.en;
+                      return text ? [{ k, text }] : [];
+                    })
+                  : [];
                 return (
                   <tr key={e.id}
                     style={{ background: isSel ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)', cursor: 'pointer' }}
@@ -281,12 +335,41 @@ function SignalsTab() {
                     </td>
                     <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>{code || '—'}</td>
                     <td style={{ ...cell }}>{lang === 'is' ? e.name_is : (e.name_en ?? <span style={{ color: 'var(--muted)' }}>—</span>)}</td>
-                    <td style={{ ...cell, textAlign: 'center', color: e.is_alarm ? 'var(--danger)' : 'var(--muted)' }}>{e.is_alarm ? '●' : '—'}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.is_alarm && e.alarm_class ? `F${e.alarm_class}` : '—'}</td>
+                    <td style={{ ...cell, minWidth: '160px', verticalAlign: 'top', padding: '4px 6px' }}>
+                      {stateRows.length > 0 ? stateRows.map(row => (
+                        <div key={row.k} style={{ display: 'flex', gap: '6px', fontSize: '11px', marginBottom: '1px' }}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--muted)', minWidth: '22px' }}>{row.k}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{row.text}</span>
+                        </div>
+                      )) : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
+                    </td>
+                    <td style={{ ...cell, fontSize: '11px', color: e.signal_type ? 'var(--text-secondary)' : 'var(--muted)' }}>{e.signal_type ?? '—'}</td>
+                    <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px' }}>
+                      {stateRows.length > 0 ? stateRows.map(row => {
+                        const cfg = e.state_alarm_map?.[row.k as '00'|'01'|'10'|'11'];
+                        return (
+                          <div key={row.k} style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
+                            {cfg?.is_alarm ? <span style={{ color: 'var(--danger)', fontSize: '10px' }}>●</span> : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
+                          </div>
+                        );
+                      }) : <span style={{ color: e.is_alarm ? 'var(--danger)' : 'var(--muted)' }}>{e.is_alarm ? '●' : '—'}</span>}
+                    </td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', verticalAlign: 'top', padding: '4px 6px' }}>
+                      {stateRows.length > 0 ? stateRows.map(row => {
+                        const cfg = e.state_alarm_map?.[row.k as '00'|'01'|'10'|'11'];
+                        return (
+                          <div key={row.k} style={{ height: '18px', display: 'flex', alignItems: 'center', color: 'var(--muted)' }}>
+                            {cfg?.is_alarm && cfg.alarm_class ? `F${cfg.alarm_class}` : '—'}
+                          </div>
+                        );
+                      }) : <span>{e.is_alarm && e.alarm_class ? `F${e.alarm_class}` : '—'}</span>}
+                    </td>
                     <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)' }}>{e.source_type}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_ld ?? '—'}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_ln ?? '—'}</td>
-                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{e.iec61850_do_da ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: e.iec61850_ln ? 'var(--text-secondary)' : 'var(--muted)', borderLeft: '2px solid var(--line)', whiteSpace: 'nowrap' }}>{e.iec61850_ln ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: e.iec61850_do ? 'var(--text-secondary)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{e.iec61850_do ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: e.iec61850_da ? 'var(--text-secondary)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{e.iec61850_da ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: e.iec61850_fc ? 'var(--text-secondary)' : 'var(--muted)' }}>{e.iec61850_fc ?? '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: e.iec61850_cdc ? 'var(--text-secondary)' : 'var(--muted)' }}>{e.iec61850_cdc ?? '—'}</td>
                     <td style={{ ...cell, whiteSpace: 'nowrap' }} onClick={ev => ev.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <Button size="sm" variant="ghost" onClick={() => { setAdding(e); setTargetBayId(''); setEquipmentCode(''); }}>+ Bay</Button>
@@ -341,6 +424,63 @@ function SignalsTab() {
         </div>
       )}
 
+      {/* Bulk edit modal */}
+      {bulkEditOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setBulkEditOpen(false); }}>
+          <div style={{ background: 'var(--bg)', borderRadius: 'var(--radius)', padding: 'var(--space-6)', minWidth: '360px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: 'var(--space-1)' }}>Breyta völdum merkjum</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: 'var(--space-4)' }}>
+              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{selected.size} merki</span> valin
+            </div>
+
+            <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Reitur</label>
+            <select value={bulkEditField} onChange={e => {
+              const f = e.target.value;
+              setBulkEditField(f);
+              setBulkEditValue(f === 'source_type' ? 'IED' : f === 'is_alarm' ? 'false' : '');
+            }} style={dropdownStyle}>
+              <option value="source_type">Uppspretta</option>
+              <option value="signal_type">Tegund</option>
+              <option value="state_id">Stöður</option>
+              <option value="is_alarm">Alarm</option>
+            </select>
+
+            <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Gildi</label>
+            {bulkEditField === 'source_type' && (
+              <select value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)} style={dropdownStyle}>
+                <option value="IED">IED</option>
+                <option value="HARDWIRED">Harðvíraður</option>
+              </select>
+            )}
+            {bulkEditField === 'signal_type' && (
+              <input value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)}
+                placeholder="t.d. BINARY, ANALOG..."
+                style={{ ...modalInput, marginBottom: 'var(--space-4)' }} />
+            )}
+            {bulkEditField === 'state_id' && (
+              <select value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)} style={dropdownStyle}>
+                <option value="">— engar stöður —</option>
+                {signalStates.map(s => <option key={s.id} value={s.id}>{s.type ?? s.id}</option>)}
+              </select>
+            )}
+            {bulkEditField === 'is_alarm' && (
+              <select value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)} style={dropdownStyle}>
+                <option value="true">Já — alarm</option>
+                <option value="false">Nei — ekki alarm</option>
+              </select>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+              <Button variant="ghost" onClick={() => setBulkEditOpen(false)}>Hætta við</Button>
+              <Button onClick={handleBulkEdit} disabled={bulkEditing}>
+                {bulkEditing ? 'Vista...' : `Breyta (${selected.size})`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New/Edit signal modal */}
       {(newOpen || editEntry) && (() => {
         const isEdit = !!editEntry;
@@ -363,9 +503,42 @@ function SignalsTab() {
                 ['Kóði *', 'code', 'monospace'],
                 ['Heiti (IS) *', 'name_is', 'inherit'],
                 ['Heiti (EN)', 'name_en', 'inherit'],
-                ['IEC 61850 LD', 'iec61850_ld', 'monospace'],
-                ['IEC 61850 LN', 'iec61850_ln', 'monospace'],
-                ['DO/DA', 'iec61850_do_da', 'monospace'],
+              ] as [string, keyof SignalLibraryEntry, string][]).map(([label, field, ff]) => (
+                <div key={field} style={{ marginBottom: 'var(--space-3)' }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{label}</label>
+                  <input
+                    value={(form[field] as string | null) ?? ''}
+                    onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value || null }))}
+                    style={{ ...modalInput, fontFamily: ff }}
+                  />
+                </div>
+              ))}
+
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Stöður</label>
+                <select
+                  value={form.state_id ?? ''}
+                  onChange={e => setForm(prev => ({ ...prev, state_id: e.target.value || null, state_alarm_map: null }))}
+                  style={{ ...modalInput, cursor: 'pointer' }}
+                >
+                  <option value="">— engar stöður —</option>
+                  {signalStates.map(s => {
+                    const preview = Object.values(s.states)
+                      .map(st => lang === 'is' ? st?.is : st?.en)
+                      .filter(Boolean).slice(0, 2).join(' / ');
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.type ?? s.id}{preview ? ` — ${preview}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {([
+                ['lnClass', 'iec61850_ln', 'monospace'],
+                ['doName', 'iec61850_do', 'monospace'],
+                ['daName', 'iec61850_da', 'monospace'],
                 ['FC', 'iec61850_fc', 'monospace'],
                 ['CDC', 'iec61850_cdc', 'monospace'],
                 ['Dataset', 'iec61850_dataset', 'monospace'],
@@ -380,20 +553,58 @@ function SignalsTab() {
                 </div>
               ))}
 
+              {form.state_id ? (() => {
+                const st = signalStates.find(s => s.id === form.state_id);
+                const ORDER = ['00', '01', '10', '11'] as const;
+                const alarmSel: React.CSSProperties = { background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '2px 6px', fontSize: '11px', outline: 'none', cursor: 'pointer' };
+                return st ? (
+                  <div style={{ marginBottom: 'var(--space-3)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600 }}>Alarm per stöðu</div>
+                    {ORDER.map(k => {
+                      const entry = st.states[k];
+                      if (!entry) return null;
+                      const text = lang === 'is' ? entry.is : entry.en;
+                      const cfg = form.state_alarm_map?.[k] ?? { is_alarm: false, is_event: false, alarm_class: null };
+                      return (
+                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '12px' }}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--muted)', minWidth: '24px' }}>{k}</span>
+                          <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{text ?? k}</span>
+                          <input type="checkbox" checked={cfg.is_alarm} onChange={ev => {
+                            const on = ev.target.checked;
+                            const newMap: StateAlarmMap = { ...(form.state_alarm_map ?? {}), [k]: { ...cfg, is_alarm: on, alarm_class: on ? (cfg.alarm_class ?? 1) : null } };
+                            setForm(prev => ({ ...prev, state_alarm_map: newMap }));
+                          }} style={{ cursor: 'pointer' }} />
+                          {cfg.is_alarm && (
+                            <select value={cfg.alarm_class?.toString() ?? '1'} onChange={ev => {
+                              const newMap: StateAlarmMap = { ...(form.state_alarm_map ?? {}), [k]: { ...cfg, alarm_class: Number(ev.target.value) as AlarmClass } };
+                              setForm(prev => ({ ...prev, state_alarm_map: newMap }));
+                            }} style={alarmSel}>
+                              <option value="1">F1</option><option value="2">F2</option><option value="3">F3</option>
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null;
+              })() : (
+                <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.is_alarm ?? false}
+                      onChange={e => setForm(prev => ({ ...prev, is_alarm: e.target.checked, alarm_class: e.target.checked ? 1 : null }))}
+                      style={{ cursor: 'pointer' }} />
+                    Alarm
+                  </label>
+                  {form.is_alarm && (
+                    <select value={form.alarm_class?.toString() ?? '1'}
+                      onChange={e => setForm(prev => ({ ...prev, alarm_class: Number(e.target.value) as AlarmClass }))}
+                      style={{ background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '4px 8px', fontSize: '12px', outline: 'none' }}>
+                      <option value="1">F1</option><option value="2">F2</option><option value="3">F3</option>
+                    </select>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={form.is_alarm ?? false}
-                    onChange={e => setForm(prev => ({ ...prev, is_alarm: e.target.checked, alarm_class: e.target.checked ? 1 : null }))}
-                    style={{ cursor: 'pointer' }} />
-                  Alarm
-                </label>
-                {form.is_alarm && (
-                  <select value={form.alarm_class?.toString() ?? '1'}
-                    onChange={e => setForm(prev => ({ ...prev, alarm_class: Number(e.target.value) as AlarmClass }))}
-                    style={{ background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '4px 8px', fontSize: '12px', outline: 'none' }}>
-                    <option value="1">F1</option><option value="2">F2</option><option value="3">F3</option>
-                  </select>
-                )}
                 <select value={form.source_type ?? 'IED'}
                   onChange={e => setForm(prev => ({ ...prev, source_type: e.target.value as SourceType }))}
                   style={{ background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '4px 8px', fontSize: '12px', outline: 'none' }}>
@@ -418,74 +629,228 @@ function SignalsTab() {
 
 function StatesTab() {
   const { api } = useApi();
-  const [states, setStates] = useState<import('../types').SignalState[]>([]);
+  const [states, setStates] = useState<SignalState[]>([]);
+  const [stateSha, setStateSha] = useState('');
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<'is' | 'en'>('is');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [idError, setIdError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const ORDER = ['00', '01', '10', '11'] as const;
+
+  type EntryForm = { k: '00'|'01'|'10'|'11'; enabled: boolean; key: string; is: string; en: string };
+  type StateForm = { id: string; type: string; entries: EntryForm[] };
+
+  const emptyForm = (): StateForm => ({
+    id: '', type: '',
+    entries: ORDER.map(k => ({ k, enabled: false, key: '', is: '', en: '' })),
+  });
+  const [form, setForm] = useState<StateForm>(emptyForm());
 
   useEffect(() => {
-    api.readJson<import('../types').SignalState[]>('data/signal_states.json')
-      .then(({ data }) => setStates(data))
+    api.readJson<SignalState[]>('data/signal_states.json')
+      .then(({ data, sha: s }) => { setStates(data); setStateSha(s); })
       .finally(() => setLoading(false));
   }, [api]);
 
-  const cell: React.CSSProperties = {
-    padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px', verticalAlign: 'top',
+  const openNew = () => { setForm(emptyForm()); setEditingId(null); setIdError(''); setModalOpen(true); };
+  const openEdit = (s: SignalState) => {
+    setForm({
+      id: s.id, type: s.type ?? '',
+      entries: ORDER.map(k => {
+        const e = s.states[k];
+        return { k, enabled: !!e, key: e?.key ?? '', is: e?.is ?? '', en: e?.en ?? '' };
+      }),
+    });
+    setEditingId(s.id); setIdError(''); setModalOpen(true);
   };
-  const head: React.CSSProperties = {
-    ...cell, fontWeight: 600, color: 'var(--text-secondary)',
-    background: 'var(--surface-alt)', whiteSpace: 'nowrap',
-    position: 'sticky', top: 0, zIndex: 1,
+
+  const setEntry = (k: string, patch: Partial<EntryForm>) =>
+    setForm(prev => ({ ...prev, entries: prev.entries.map(e => e.k === k ? { ...e, ...patch } : e) }));
+
+  // Build lookup: key → { is, en } from all existing states
+  const keyLookup = new Map<string, { is: string; en: string }>();
+  for (const s of states) {
+    for (const entry of Object.values(s.states)) {
+      if (entry?.key) keyLookup.set(entry.key, { is: entry.is ?? '', en: entry.en ?? '' });
+    }
+  }
+  const existingKeys = [...keyLookup.keys()].sort();
+
+  const handleSave = async () => {
+    const trimId = form.id.trim();
+    if (!trimId) { setIdError('ID er nauðsynlegt'); return; }
+    if (states.some(s => s.id === trimId && s.id !== editingId)) { setIdError(`ID "${trimId}" er þegar til`); return; }
+    setSaving(true);
+    try {
+      const built: SignalState = {
+        id: trimId,
+        type: form.type.trim() || null,
+        states: Object.fromEntries(
+          form.entries.filter(e => e.enabled).map(e => [e.k, { key: e.key.trim() || null, is: e.is.trim() || null, en: e.en.trim() || null }])
+        ) as SignalState['states'],
+      };
+      const newStates = editingId === null ? [...states, built] : states.map(s => s.id === editingId ? built : s);
+      const newSha = await api.writeJson('data/signal_states.json', newStates, stateSha, editingId ? `Uppfæra stöðu: ${trimId}` : `Nýr stöðuflokkur: ${trimId}`);
+      setStates(newStates); setStateSha(newSha); setModalOpen(false);
+    } finally { setSaving(false); }
   };
+
+  const handleDelete = async (id: string) => {
+    const newStates = states.filter(s => s.id !== id);
+    const newSha = await api.writeJson('data/signal_states.json', newStates, stateSha, `Eyða stöðu: ${id}`);
+    setStates(newStates); setStateSha(newSha); setDeletingId(null);
+  };
+
+  const cell: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px', verticalAlign: 'top' };
+  const head: React.CSSProperties = { ...cell, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--surface-alt)', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1 };
+  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: '12px', outline: 'none' };
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{states.length} stöðuflokkar</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Button size="sm" onClick={openNew}>+ Nýr stöðuflokkur</Button>
+          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{states.length} flokkar</span>
+        </div>
         <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
           {(['is', 'en'] as const).map(l => (
             <button key={l} type="button" onClick={() => setLang(l)}
-              style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 600, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                background: lang === l ? 'var(--accent)' : 'transparent',
-                color: lang === l ? '#fff' : 'var(--text-secondary)' }}>
+              style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 600, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: lang === l ? 'var(--accent)' : 'transparent', color: lang === l ? '#fff' : 'var(--text-secondary)' }}>
               {l.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
+
       <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {['Tegund', '00', '01', '10', '11'].map(h => (
-                <th key={h} style={head}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {states.length === 0 && (
-              <tr><td colSpan={5} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engar stöður</td></tr>
-            )}
-            {states.map((s, i) => (
-              <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
-                <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>
-                  {s.type ?? '—'}
-                </td>
-                {(['00', '01', '10', '11'] as const).map(k => {
-                  const entry = s.states[k];
-                  const text = entry ? (lang === 'is' ? entry.is : entry.en) : null;
-                  return (
-                    <td key={k} style={{ ...cell, color: text ? 'var(--text)' : 'var(--muted)', minWidth: '120px' }}>
-                      {text ?? '—'}
-                    </td>
-                  );
-                })}
+        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['ID', 'Tegund', '00', '01', '10', '11', ''].map(h => <th key={h} style={head}>{h}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {states.length === 0 && (
+                <tr><td colSpan={7} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engir stöðuflokkar</td></tr>
+              )}
+              {states.map((s, i) => (
+                <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>{s.id}</td>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>{s.type ?? '—'}</td>
+                  {ORDER.map(k => {
+                    const entry = s.states[k];
+                    const text = entry ? (lang === 'is' ? entry.is : entry.en) : null;
+                    return (
+                      <td key={k} style={{ ...cell, minWidth: '110px' }}>
+                        {entry ? (
+                          <div>
+                            {entry.key && <span style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--muted)', display: 'block' }}>{entry.key}</span>}
+                            <span style={{ color: text ? 'var(--text)' : 'var(--muted)' }}>{text ?? '—'}</span>
+                          </div>
+                        ) : <span style={{ color: 'var(--muted)' }}>—</span>}
+                      </td>
+                    );
+                  })}
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                    {deletingId === s.id ? (
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--danger)' }}>Eyða?</span>
+                        <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)}>Já</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDeletingId(null)}>Nei</Button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(s)}>✏</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDeletingId(s.id)}>🗑</Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false); }}>
+          <div style={{ background: 'var(--bg)', borderRadius: 'var(--radius)', padding: 'var(--space-6)', width: '520px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: 'var(--space-4)' }}>
+              {editingId === null ? 'Nýr stöðuflokkur' : `Breyta — ${editingId}`}
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>ID *</label>
+                <input value={form.id} onChange={e => { setForm(prev => ({ ...prev, id: e.target.value })); setIdError(''); }}
+                  style={{ ...inp, fontFamily: 'monospace', borderColor: idError ? 'var(--danger)' : undefined }} placeholder="t.d. SP, DP, Activated" />
+                {idError && <div style={{ fontSize: '11px', color: 'var(--danger)', marginTop: '3px' }}>{idError}</div>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Tegund</label>
+                <input value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))}
+                  style={{ ...inp, fontFamily: 'monospace' }} placeholder="t.d. SP" />
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Stöður</div>
+              {form.entries.map(entry => (
+                <div key={entry.k} style={{ marginBottom: 'var(--space-3)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', marginBottom: entry.enabled ? '6px' : 0 }}>
+                    <input type="checkbox" checked={entry.enabled} onChange={e => setEntry(entry.k, { enabled: e.target.checked })} style={{ cursor: 'pointer' }} />
+                    <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>{entry.k}</span>
+                  </label>
+                  {entry.enabled && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', paddingLeft: '20px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginBottom: '2px' }}>Key</label>
+                        <input
+                          list={`keys-${entry.k}`}
+                          value={entry.key}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const known = keyLookup.get(val);
+                            setEntry(entry.k, known ? { key: val, is: known.is, en: known.en } : { key: val });
+                          }}
+                          style={{ ...inp, fontFamily: 'monospace', fontSize: '11px' }}
+                          placeholder="t.d. ON"
+                        />
+                        <datalist id={`keys-${entry.k}`}>
+                          {existingKeys.map(k => <option key={k} value={k} />)}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginBottom: '2px' }}>IS</label>
+                        <input value={entry.is} onChange={e => setEntry(entry.k, { is: e.target.value })} style={{ ...inp, fontSize: '11px' }} placeholder="Íslenska" />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginBottom: '2px' }}>EN</label>
+                        <input value={entry.en} onChange={e => setEntry(entry.k, { en: e.target.value })} style={{ ...inp, fontSize: '11px' }} placeholder="English" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+              <Button variant="ghost" onClick={() => setModalOpen(false)}>Hætta við</Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Vista...' : editingId === null ? 'Vista' : 'Vista breytingar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

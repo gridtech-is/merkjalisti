@@ -76,7 +76,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
       if (q) {
         const hay = [
           r.signal.signal_name, r.signal.name_is, r.signal.name_en ?? '',
-          r.signal.iec61850_ld ?? '', r.signal.iec61850_ln ?? '', r.signal.iec61850_do_da ?? '',
+          r.signal.iec61850_ld ?? '', r.signal.iec61850_ln ?? '', r.signal.iec61850_do ?? '', r.signal.iec61850_da ?? '',
         ].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
@@ -98,7 +98,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
   }, [rows, search, selectedBays, phaseFilter, sourceFilter, alarmOnly, untestedOnly]);
 
   const iecAddress = (sig: BaySignal): string => {
-    const parts = [sig.iec61850_ld, sig.iec61850_ln, sig.iec61850_do_da].filter(Boolean);
+    const parts = [sig.iec61850_ld, sig.iec61850_ln, sig.iec61850_do, sig.iec61850_da].filter(Boolean);
     return parts.length > 0 ? parts.join('/') : '—';
   };
 

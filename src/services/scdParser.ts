@@ -39,14 +39,17 @@ export interface ScdParseResult {
 // ─── DataTypeTemplates index ───────────────────────────────────────────────
 
 interface LnTypeEntry { lnClass: string; doRefs: Array<{ name: string; typeId: string }> }
-interface DoTypeEntry { cdc: string; das: Array<{ name: string; fc: string }> }
+interface DoTypeEntry { cdc: string; das: Array<{ name: string; fc: string; bType: string; typeId: string }> }
+interface DaTypeEntry { bdas: Array<{ name: string; bType: string; typeId: string }> }
 
 function buildDtIndex(doc: Document): {
   lnTypes: Map<string, LnTypeEntry>;
   doTypes: Map<string, DoTypeEntry>;
+  daTypes: Map<string, DaTypeEntry>;
 } {
   const lnTypes = new Map<string, LnTypeEntry>();
   const doTypes = new Map<string, DoTypeEntry>();
+  const daTypes = new Map<string, DaTypeEntry>();
 
   doc.querySelectorAll('DataTypeTemplates > LNodeType').forEach(lnt => {
     const id = lnt.getAttribute('id') ?? '';
@@ -62,17 +65,58 @@ function buildDtIndex(doc: Document): {
     const id = dot.getAttribute('id') ?? '';
     const cdc = dot.getAttribute('cdc') ?? '';
     const das: DoTypeEntry['das'] = [];
-    dot.querySelectorAll('DA').forEach(daEl => {
-      das.push({ name: daEl.getAttribute('name') ?? '', fc: daEl.getAttribute('fc') ?? '' });
+    dot.querySelectorAll(':scope > DA').forEach(daEl => {
+      das.push({
+        name: daEl.getAttribute('name') ?? '',
+        fc: daEl.getAttribute('fc') ?? '',
+        bType: daEl.getAttribute('bType') ?? '',
+        typeId: daEl.getAttribute('type') ?? '',
+      });
     });
     doTypes.set(id, { cdc, das });
   });
 
-  return { lnTypes, doTypes };
+  doc.querySelectorAll('DataTypeTemplates > DAType').forEach(dat => {
+    const id = dat.getAttribute('id') ?? '';
+    const bdas: DaTypeEntry['bdas'] = [];
+    dat.querySelectorAll(':scope > BDA').forEach(bdaEl => {
+      bdas.push({
+        name: bdaEl.getAttribute('name') ?? '',
+        bType: bdaEl.getAttribute('bType') ?? '',
+        typeId: bdaEl.getAttribute('type') ?? '',
+      });
+    });
+    daTypes.set(id, { bdas });
+  });
+
+  return { lnTypes, doTypes, daTypes };
 }
 
 // Interesting FCs — skip internal/config ones by default
 const INTERESTING_FC = new Set(['ST', 'MX', 'CO', 'SP', 'SV', 'EX']);
+
+function expandDa(
+  doName: string,
+  daPrefix: string,
+  fc: string,
+  cdc: string,
+  daTypeId: string,
+  daTypes: Map<string, DaTypeEntry>,
+  result: ScdDoDa[],
+  depth: number,
+): void {
+  if (depth > 1) return;
+  const daType = daTypes.get(daTypeId);
+  if (!daType) return;
+  for (const bda of daType.bdas) {
+    const fullDa = daPrefix ? `${daPrefix}.${bda.name}` : bda.name;
+    if (bda.bType === 'Struct' && bda.typeId) {
+      expandDa(doName, fullDa, fc, cdc, bda.typeId, daTypes, result, depth + 1);
+    } else {
+      result.push({ doName, daName: fullDa, fc, cdc });
+    }
+  }
+}
 
 function resolveDoDas(lnTypeId: string, dt: ReturnType<typeof buildDtIndex>): ScdDoDa[] {
   const lnType = dt.lnTypes.get(lnTypeId);
@@ -84,7 +128,11 @@ function resolveDoDas(lnTypeId: string, dt: ReturnType<typeof buildDtIndex>): Sc
     if (!doType) continue;
     for (const da of doType.das) {
       if (!INTERESTING_FC.has(da.fc)) continue;
-      result.push({ doName: doRef.name, daName: da.name, fc: da.fc, cdc: doType.cdc });
+      if (da.bType === 'Struct' && da.typeId) {
+        expandDa(doRef.name, da.name, da.fc, doType.cdc, da.typeId, dt.daTypes, result, 0);
+      } else {
+        result.push({ doName: doRef.name, daName: da.name, fc: da.fc, cdc: doType.cdc });
+      }
     }
   }
   return result;

@@ -1,7 +1,8 @@
 // src/pages/ProjectView.tsx
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
+import { useProjectNav } from '../context/ProjectNavContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel, exportEquipmentTemplate, importEquipmentFromExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
@@ -12,6 +13,7 @@ import type { Project, Equipment, EquipmentTemplate, Bay, ApparatusType, Project
 import { StationSignalsTab } from '../components/StationSignalsTab';
 import { OverviewTab } from '../components/OverviewTab';
 import { loadStation } from '../services/stationService';
+import { parseModel, saveModel, loadIedModel } from '../services/iedModelService';
 
 type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
 type EqTab = 'apparatus' | 'ied';
@@ -89,12 +91,15 @@ export function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>();
   const { api, userName } = useApi();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (searchParams.get('tab') as Tab) ?? 'bays';
+  const setTab = (t: Tab) => setSearchParams(t === 'bays' ? {} : { tab: t }, { replace: true });
+  const { setProject: setNavProject } = useProjectNav();
   const [project, setProject] = useState<Project | null>(null);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [equipmentSha, setEquipmentSha] = useState('');
   const [templates, setTemplates] = useState<EquipmentTemplate[]>([]);
   const [bays, setBays] = useState<Bay[]>([]);
-  const [tab, setTab] = useState<Tab>('bays');
   const [eqTab, setEqTab] = useState<EqTab>('apparatus');
   const [showScd, setShowScd] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -117,6 +122,11 @@ export function ProjectView() {
   const [newITemplateId, setNewITemplateId] = useState('');
   const [newIDesc, setNewIDesc] = useState('');
 
+  // IED models
+  const [iedModels, setIedModels] = useState<Map<string, { count: number; name: string }>>(new Map());
+  const [modelUploading, setModelUploading] = useState<string | null>(null);
+  const [iedMismatch, setIedMismatch] = useState<{ eq: Equipment; fcda: import('../types').IedFcda[]; iedName: string } | null>(null);
+
   useEffect(() => {
     if (!projectId) return;
     Promise.all([
@@ -126,6 +136,7 @@ export function ProjectView() {
       loadStation(api, projectId).catch(() => null),
     ]).then(([files, bayList, { data: tmplData }, stationFile]) => {
       setProject(files.project);
+      setNavProject(projectId!, files.project.name);
       setProjectSha(files.projectSha);
       setStationDraft(files.project.station_number);
       setEquipment(files.equipment);
@@ -143,6 +154,76 @@ export function ProjectView() {
     const tmpl = templates.find(t => t.id === newITemplateId);
     if (tmpl) setNewIDesc(tmpl.description ?? '');
   }, [newITemplateId, templates]);
+
+  // Check which IEDs have models loaded
+  useEffect(() => {
+    if (!projectId) return;
+    const ieds = equipment.filter(e => e.category === 'ied');
+    if (ieds.length === 0) return;
+    Promise.all(
+      ieds.map(async eq => {
+        const model = await loadIedModel(api, projectId, eq.id);
+        return { id: eq.id, model };
+      })
+    ).then(results => {
+      setIedModels(prev => {
+        const next = new Map(prev);
+        results.forEach(({ id, model }) => {
+          if (model && model.length > 0) {
+            next.set(id, { count: model.length, name: '' });
+          }
+        });
+        return next;
+      });
+    });
+  }, [api, projectId, equipment]);
+
+  const handleUploadIcd = async (eq: Equipment, file: File) => {
+    if (!projectId) return;
+    setModelUploading(eq.id);
+    try {
+      const xmlText = await file.text();
+      const { fcda, iedName, error } = parseModel(xmlText);
+      if (error) { alert(error); return; }
+      const expectedName = eq.ied_name?.trim() || eq.code;
+      if (iedName && expectedName && iedName !== expectedName) {
+        setIedMismatch({ eq, fcda, iedName });
+        return;
+      }
+      await saveModel(api, projectId, eq.id, fcda, iedName);
+      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+    } finally {
+      setModelUploading(null);
+    }
+  };
+
+  const handleMismatchUseFileName = async () => {
+    if (!iedMismatch || !projectId) return;
+    const { eq, fcda, iedName } = iedMismatch;
+    setIedMismatch(null);
+    setModelUploading(eq.id);
+    try {
+      const updated = equipment.map(e => e.id === eq.id ? { ...e, ied_name: iedName } : e);
+      await saveEquipment(updated);
+      await saveModel(api, projectId, eq.id, fcda, iedName);
+      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+    } finally {
+      setModelUploading(null);
+    }
+  };
+
+  const handleMismatchContinue = async () => {
+    if (!iedMismatch || !projectId) return;
+    const { eq, fcda, iedName } = iedMismatch;
+    setIedMismatch(null);
+    setModelUploading(eq.id);
+    try {
+      await saveModel(api, projectId, eq.id, fcda, iedName);
+      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+    } finally {
+      setModelUploading(null);
+    }
+  };
 
   const saveEquipment = async (updated: Equipment[]) => {
     const msg = `[DESIGN] Uppfæra tæki`;
@@ -275,8 +356,18 @@ export function ProjectView() {
     </div>
   );
 
-  const apparatus = equipment.filter(e => e.category === 'apparatus' || !e.category);
-  const ieds = equipment.filter(e => e.category === 'ied');
+  const TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
+  const apparatus = equipment
+    .filter(e => e.category === 'apparatus' || !e.category)
+    .sort((a, b) => {
+      const ta = TYPE_ORDER[a.type ?? 'Annað'] ?? 6;
+      const tb = TYPE_ORDER[b.type ?? 'Annað'] ?? 6;
+      if (ta !== tb) return ta - tb;
+      return a.code.localeCompare(b.code, 'is');
+    });
+  const ieds = equipment
+    .filter(e => e.category === 'ied')
+    .sort((a, b) => a.code.localeCompare(b.code, 'is'));
 
   const stationIndicator = stationStatus === 'IN_REVIEW' ? ' •' : stationStatus === 'LOCKED' ? ' ✓' : '';
   const TABS: { id: Tab; label: string }[] = [
@@ -626,7 +717,22 @@ export function ProjectView() {
                         onChange={() => {}} />
                     </td>
                     <td style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                      <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <label style={{ cursor: 'pointer' }}>
+                          <input type="file" accept=".icd,.scd,.xml" style={{ display: 'none' }}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadIcd(eq, f); e.target.value = ''; }} />
+                          <span style={{
+                            display: 'inline-block', padding: '3px 8px', fontSize: '11px',
+                            border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: iedModels.has(eq.id) ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                            color: iedModels.has(eq.id) ? 'var(--accent)' : 'var(--text-secondary)',
+                          }}>
+                            {modelUploading === eq.id ? '...' : iedModels.has(eq.id) ? `✓ ${iedModels.get(eq.id)!.count} merki` : '📂 ICD'}
+                          </span>
+                        </label>
+                        <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -662,6 +768,23 @@ export function ProjectView() {
             </table>
             </>
           )}
+        </div>
+      )}
+
+      {iedMismatch && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', padding: 'var(--space-5)', maxWidth: '420px', width: '100%' }}>
+            <div style={{ fontWeight: 600, marginBottom: 'var(--space-3)' }}>IED nafn passar ekki</div>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+              <div>Nafn í skrá: <strong style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{iedMismatch.iedName}</strong></div>
+              <div>Tech key tækis: <strong style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{iedMismatch.eq.ied_name?.trim() || iedMismatch.eq.code}</strong></div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <Button onClick={handleMismatchUseFileName}>Nota nafn úr skrá og uppfæra tæki</Button>
+              <Button variant="ghost" onClick={handleMismatchContinue}>Halda áfram þótt nöfn séu mismunandi</Button>
+              <Button variant="ghost" onClick={() => setIedMismatch(null)}>Hætta við</Button>
+            </div>
+          </div>
         </div>
       )}
 

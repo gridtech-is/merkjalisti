@@ -1,7 +1,7 @@
 // src/components/SignalTable.tsx
 import React, { useState } from 'react';
 import { Button } from './ui';
-import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType } from '../types';
+import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType, IedFcda } from '../types';
 
 interface Props {
   signals: BaySignal[];
@@ -10,9 +10,11 @@ interface Props {
   states?: SignalState[];
   bayDisplayId?: string;
   reviewMode?: boolean;
+  iedModels?: Map<string, IedFcda[]>;
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
+  onBatchUpdate?: (patches: { id: string; patch: Partial<BaySignal> }[]) => void;
   onDelete: (signalId: string) => void;
-  onDuplicate?: (ids: string[], at: number) => void;
+  onDuplicate?: (ids: string[], at: number, count: number) => void;
   onReorder?: (newOrder: string[]) => void;
 }
 
@@ -66,7 +68,7 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, onUpdate, onDelete, onDuplicate, onReorder }: Props) {
+export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, iedModels, onUpdate, onBatchUpdate, onDelete, onDuplicate, onReorder }: Props) {
   // Build lookup index: code → library entry
   const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
   // Build state index: id → SignalState
@@ -78,10 +80,18 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [flagComment, setFlagComment] = useState('');
   const [popupId, setPopupId] = useState<string | null>(null);
+  const [fcdaPickerId, setFcdaPickerId] = useState<string | null>(null);
+  const [fcdaSearch, setFcdaSearch] = useState('');
   // Block edit state
   const [blockIed, setBlockIed] = useState('');
+  const [blockLdInst, setBlockLdInst] = useState('');
   const [blockPrefix, setBlockPrefix] = useState('');
+  const [blockLnClass, setBlockLnClass] = useState('');
   const [blockInst, setBlockInst] = useState('');
+  const [blockDoName, setBlockDoName] = useState('');
+  const [blockDaName, setBlockDaName] = useState('');
+  const [blockFc, setBlockFc] = useState('');
+  const [blockDataset, setBlockDataset] = useState('');
   const [blockRcb, setBlockRcb] = useState('');
   const [blockDse, setBlockDse] = useState('');
   const [blockEqCode, setBlockEqCode] = useState('');
@@ -89,6 +99,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [duplicateAt, setDuplicateAt] = useState('');
+  const [duplicateCount, setDuplicateCount] = useState('1');
 
   if (signals.length === 0) {
     return (
@@ -111,12 +122,23 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     const patch: Partial<BaySignal> = {};
     if (blockEqCode) patch.equipment_code = blockEqCode;
     if (blockIed) patch.iec61850_ied = blockIed;
+    if (blockLdInst !== '') patch.iec61850_ld = blockLdInst || null;
     if (blockPrefix !== '') patch.iec61850_ln_prefix = blockPrefix || null;
+    if (blockLnClass !== '') patch.iec61850_ln = blockLnClass || null;
     if (blockInst !== '') patch.iec61850_ln_inst = blockInst || null;
+    if (blockDoName !== '') patch.iec61850_do = blockDoName || null;
+    if (blockDaName !== '') patch.iec61850_da = blockDaName || null;
+    if (blockFc !== '') patch.iec61850_fc = blockFc || null;
+    if (blockDataset !== '') patch.iec61850_dataset = blockDataset || null;
     if (blockRcb !== '') patch.iec61850_rcb = blockRcb || null;
     if (blockDse !== '') patch.iec61850_dataset_entry = blockDse || null;
-    ids.forEach(id => onUpdate(id, patch));
-    setBlockIed(''); setBlockPrefix(''); setBlockInst('');
+    if (onBatchUpdate) {
+      onBatchUpdate(ids.map(id => ({ id, patch })));
+    } else {
+      ids.forEach(id => onUpdate(id, patch));
+    }
+    setBlockIed(''); setBlockLdInst(''); setBlockPrefix(''); setBlockLnClass(''); setBlockInst('');
+    setBlockDoName(''); setBlockDaName(''); setBlockFc(''); setBlockDataset('');
     setBlockRcb(''); setBlockDse(''); setBlockEqCode('');
     setSelected(new Set());
   };
@@ -152,7 +174,15 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     setDragOverId(null);
   };
 
-  const eqCodesInSignals = [...new Set(signals.map(s => s.equipment_code).filter(Boolean))];
+  const EQ_TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
+  const eqCodesInSignals = [...new Set(signals.map(s => s.equipment_code).filter(Boolean))].sort((a, b) => {
+    const ea = equipment.find(e => e.code === a);
+    const eb = equipment.find(e => e.code === b);
+    const ta = ea?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[ea?.type ?? 'Annað'] ?? 6);
+    const tb = eb?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[eb?.type ?? 'Annað'] ?? 6);
+    if (ta !== tb) return ta - tb;
+    return a.localeCompare(b, 'is');
+  });
   const visibleSignals = signals.filter(s => {
     if (filterEq && s.equipment_code !== filterEq) return false;
     if (filterText) {
@@ -170,7 +200,12 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     return true;
   });
 
-  const allEqCodes = equipment.map(e => e.code);
+  const allEqCodes = [...equipment].sort((a, b) => {
+    const ta = a.category === 'ied' ? 7 : (EQ_TYPE_ORDER[a.type ?? 'Annað'] ?? 6);
+    const tb = b.category === 'ied' ? 7 : (EQ_TYPE_ORDER[b.type ?? 'Annað'] ?? 6);
+    if (ta !== tb) return ta - tb;
+    return a.code.localeCompare(b.code, 'is');
+  }).map(e => e.code);
   const iedOptions = equipment.filter(e => e.category === 'ied');
   const blockInputStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
@@ -252,34 +287,71 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
               {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
             </select>
           </label>
-          {/* LN Prefix */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            LN Prefix
+            ldInst
+            <input value={blockLdInst} onChange={e => setBlockLdInst(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            Prefix
             <input value={blockPrefix} onChange={e => setBlockPrefix(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '80px' }} />
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
           </label>
-          {/* LN Inst */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            LN Inst
-            <input value={blockInst} onChange={e => setBlockInst(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '60px' }} />
+            lnClass
+            <input value={blockLnClass} onChange={e => setBlockLnClass(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
           </label>
-          {/* RCB */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            lnInst
+            <input value={blockInst} onChange={e => setBlockInst(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '55px' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            doName
+            <input value={blockDoName} onChange={e => setBlockDoName(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            daName
+            <input value={blockDaName} onChange={e => setBlockDaName(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            FC
+            <input value={blockFc} onChange={e => setBlockFc(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '50px' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            Dataset
+            <input value={blockDataset} onChange={e => setBlockDataset(e.target.value)}
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '100px' }} />
+          </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
             RCB
             <input value={blockRcb} onChange={e => setBlockRcb(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '140px' }} />
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '130px' }} />
           </label>
-          {/* Dataset Entry */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            Dataset Entry
+            DSE
             <input value={blockDse} onChange={e => setBlockDse(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '120px' }} />
+              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '110px' }} />
           </label>
           <div style={{ display: 'flex', gap: 'var(--space-2)', alignSelf: 'flex-end' }}>
             <Button size="sm" onClick={applyBlock}>Nota á valin</Button>
             {onDuplicate && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>×</span>
+                <input
+                  type="number"
+                  value={duplicateCount}
+                  onChange={e => setDuplicateCount(e.target.value)}
+                  placeholder="1"
+                  min={1}
+                  max={100}
+                  style={{ ...blockInputStyle, width: '44px', textAlign: 'center' }}
+                  title="Fjöldi afrita"
+                />
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>í línu</span>
                 <input
                   type="number"
@@ -292,9 +364,11 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 />
                 <Button size="sm" variant="ghost" onClick={() => {
                   const at = parseInt(duplicateAt) || signals.length + 1;
-                  onDuplicate([...selected], at);
+                  const count = Math.max(1, parseInt(duplicateCount) || 1);
+                  onDuplicate([...selected], at, count);
                   setSelected(new Set());
                   setDuplicateAt('');
+                  setDuplicateCount('1');
                 }}>
                   Afrita valin
                 </Button>
@@ -334,11 +408,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
               {['Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                 <th key={h} style={head}>{h}</th>
               ))}
-              <th colSpan={5} style={{ ...head, borderLeft: '2px solid var(--accent)', color: 'var(--accent)', textAlign: 'center' }}>
-                IEC 61850 — Tilvik
-              </th>
-              <th colSpan={6} style={{ ...head, borderLeft: '2px solid var(--line)', textAlign: 'center' }}>
-                IEC 61850 — Úr safni
+              <th colSpan={13} style={{ ...head, borderLeft: '2px solid var(--accent)', color: 'var(--accent)', textAlign: 'center' }}>
+                IEC 61850
               </th>
               <th style={head}>Fasi</th>
               {reviewMode && <th style={head}></th>}
@@ -356,11 +427,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
               {['Alarm', 'Fl.', 'Upprunatengsl'].map(h => (
                 <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               ))}
-              {(['Tech Key', 'LN Prefix', 'LN Inst', 'RCB', 'Dataset Entry'] as string[]).map((h, i) => (
+              {(['IED', 'ldInst', 'Prefix', 'lnClass', 'lnInst', 'doName', 'daName', 'FC', 'CDC', 'Dataset', 'RCB', 'DSE', 'Ref.'] as string[]).map((h, i) => (
                 <th key={`ii-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--accent)' : undefined }}>{h}</th>
-              ))}
-              {(['LD', 'LN', 'DO & DA', 'FC', 'CDC', 'Dataset'] as string[]).map((h, i) => (
-                <th key={`il-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
               ))}
               <th style={{ ...head, top: '33px' }}></th>
               {reviewMode && <th style={{ ...head, top: '33px' }}></th>}
@@ -489,9 +557,9 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                             alarm_class: entry.alarm_class ?? null,
                             source_type: entry.source_type,
                             state_id: entry.state_id ?? null,
-                            iec61850_ld: entry.iec61850_ld ?? null,
                             iec61850_ln: entry.iec61850_ln ?? null,
-                            iec61850_do_da: entry.iec61850_do_da ?? null,
+                            iec61850_do: entry.iec61850_do ?? null,
+                            iec61850_da: entry.iec61850_da ?? null,
                             iec61850_fc: entry.iec61850_fc ?? null,
                             iec61850_cdc: entry.iec61850_cdc ?? null,
                             iec61850_dataset: entry.iec61850_dataset ?? null,
@@ -650,46 +718,186 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
-                  {/* IEC 61850 instance — IED as dropdown */}
-                  <td style={{ ...cell, minWidth: '110px', borderLeft: '2px solid var(--accent)' }}>
-                    {iedOptions.length > 0 ? (
-                      <select value={sig.iec61850_ied ?? ''} onChange={e => onUpdate(sig.id, { iec61850_ied: e.target.value || null })} style={eSelect}>
-                        <option value="">—</option>
-                        {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
-                      </select>
-                    ) : (
-                      <input style={eInput} defaultValue={sig.iec61850_ied ?? ''} key={`ied-${sig.id}`}
-                        placeholder="Q0IED" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ied: e.target.value || null }); }}
-                        onChange={() => {}} />
-                    )}
+                  {/* IEC 61850 — IED */}
+                  <td style={{ ...cell, minWidth: '100px', borderLeft: '2px solid var(--accent)', position: 'relative' }}>
+                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+                      {iedOptions.length > 0 ? (
+                        <select value={sig.iec61850_ied ?? ''} onChange={e => onUpdate(sig.id, { iec61850_ied: e.target.value || null })} style={eSelect}>
+                          <option value="">—</option>
+                          {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
+                        </select>
+                      ) : (
+                        <input style={eInput} defaultValue={sig.iec61850_ied ?? ''} key={`ied-${sig.id}`}
+                          placeholder="Q0IED" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ied: e.target.value || null }); }}
+                          onChange={() => {}} />
+                      )}
+                      {sig.iec61850_ied && iedModels?.has(sig.iec61850_ied) && (
+                        <button type="button" onClick={() => { const opening = fcdaPickerId !== sig.id; setFcdaPickerId(opening ? sig.id : null); setFcdaSearch(opening ? (sig.iec61850_ln ?? '') : ''); }}
+                          style={{ flexShrink: 0, background: fcdaPickerId === sig.id ? 'var(--accent)' : 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: '3px', cursor: 'pointer', padding: '2px 4px', fontSize: '11px', color: fcdaPickerId === sig.id ? '#fff' : 'var(--text-secondary)' }}
+                          title="Velja úr módeli">≡</button>
+                      )}
+                    </div>
+                    {/* FCDA picker dropdown */}
+                    {fcdaPickerId === sig.id && sig.iec61850_ied && iedModels?.has(sig.iec61850_ied) && (() => {
+                      const model = iedModels.get(sig.iec61850_ied)!;
+                      const q = fcdaSearch.toLowerCase();
+                      const filtered = q ? model.filter(f =>
+                        f.lnClass.toLowerCase().includes(q) ||
+                        f.doName.toLowerCase().includes(q) ||
+                        f.daName.toLowerCase().includes(q) ||
+                        f.ldInst.toLowerCase().includes(q) ||
+                        `${f.prefix}${f.lnClass}${f.lnInst}`.toLowerCase().includes(q)
+                      ) : model;
+                      return (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', minWidth: '360px', maxHeight: '320px', display: 'flex', flexDirection: 'column' }}>
+                          <input autoFocus value={fcdaSearch} onChange={e => setFcdaSearch(e.target.value)}
+                            placeholder="Leita... (XCBR, Pos, ST...)"
+                            style={{ margin: '6px', padding: '4px 8px', fontSize: '12px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', background: 'var(--surface-alt)', color: 'var(--text)', outline: 'none' }} />
+                          <div style={{ overflowY: 'auto', flex: 1 }}>
+                            {filtered.slice(0, 200).map((f, idx) => {
+                              const ref = `${f.ldInst}/${f.prefix}${f.lnClass}${f.lnInst}.${f.doName}${f.daName ? '.'+f.daName : ''}`;
+                              return (
+                                <div key={idx} onClick={() => {
+                                  onUpdate(sig.id, {
+                                    iec61850_ld: f.ldInst,
+                                    iec61850_ln_prefix: f.prefix || null,
+                                    iec61850_ln: f.lnClass,
+                                    iec61850_ln_inst: f.lnInst,
+                                    iec61850_do: f.doName,
+                                    iec61850_da: f.daName || null,
+                                    iec61850_fc: f.fc,
+                                    iec61850_cdc: f.cdc || null,
+                                  });
+                                  setFcdaPickerId(null);
+                                }} style={{ padding: '4px 10px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '11px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-focus)')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                  <span>{ref}</span>
+                                  <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{f.fc}{f.cdc ? ` · ${f.cdc}` : ''}</span>
+                                </div>
+                              );
+                            })}
+                            {filtered.length === 0 && <div style={{ padding: '8px 10px', color: 'var(--muted)', fontSize: '12px' }}>Ekkert fannst</div>}
+                            {filtered.length > 200 && <div style={{ padding: '4px 10px', color: 'var(--muted)', fontSize: '11px' }}>Sía til að sjá fleiri...</div>}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </td>
-                  <td style={{ ...cell, minWidth: '65px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}`}
-                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
+                  {/* ldInst */}
+                  {(() => {
+                    const model = sig.iec61850_ied ? iedModels?.get(sig.iec61850_ied) : undefined;
+                    const ldOpts = model ? [...new Set(model.map(f => f.ldInst))].sort() : [];
+                    const lnOpts = model ? [...new Set(model.filter(f => !sig.iec61850_ld || f.ldInst === sig.iec61850_ld).map(f => f.lnClass))].sort() : [];
+                    const pfxOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && f.lnClass === ln).map(f => f.prefix))] : [];
+                    const ldOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.ldInst))] : [];
+                    const pfxOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.prefix))].sort() : [];
+                    const doOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.doName))].sort() : [];
+                    const daOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_do || f.doName === sig.iec61850_do)).map(f => f.daName).filter(Boolean))].sort() : [];
+                    return (
+                      <>
+                        {ldOpts.length > 0 && <datalist id={`dl-ld-${sig.id}`}>{ldOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        {lnOpts.length > 0 && <datalist id={`dl-ln-${sig.id}`}>{lnOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        {pfxOpts.length > 1 && <datalist id={`dl-pfx-${sig.id}`}>{pfxOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        {doOpts.length > 0 && <datalist id={`dl-do-${sig.id}`}>{doOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        {daOpts.length > 0 && <datalist id={`dl-da-${sig.id}`}>{daOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        <td style={{ ...cell, minWidth: '60px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_ld ?? ''} key={`ld-${sig.id}`}
+                            list={ldOpts.length > 0 ? `dl-ld-${sig.id}` : undefined}
+                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ld: e.target.value || null }); }}
+                            onChange={() => {}} />
+                        </td>
+                        {/* Prefix */}
+                        <td style={{ ...cell, minWidth: '55px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}`}
+                            list={pfxOpts.length > 1 ? `dl-pfx-${sig.id}` : undefined}
+                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
+                            onChange={() => {}} />
+                        </td>
+                        {/* lnClass */}
+                        <td style={{ ...cell, minWidth: '65px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_ln ?? ''} key={`ln-${sig.id}`}
+                            list={lnOpts.length > 0 ? `dl-ln-${sig.id}` : undefined}
+                            onFocus={onFocus} onBlur={e => {
+                              onBlurReset(e);
+                              const ln = e.target.value || null;
+                              const patch: Partial<BaySignal> = { iec61850_ln: ln };
+                              if (ln && model) {
+                                const lds = ldOptsForLn(ln);
+                                if (lds.length === 1) patch.iec61850_ld = lds[0] || null;
+                                const pfxs = pfxOptsForLn(ln);
+                                if (pfxs.length === 1) patch.iec61850_ln_prefix = pfxs[0] || null;
+                              }
+                              onUpdate(sig.id, patch);
+                            }}
+                            onChange={() => {}} />
+                        </td>
+                        {/* lnInst */}
+                        <td style={{ ...cell, minWidth: '50px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}`}
+                            placeholder="1" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
+                            onChange={() => {}} />
+                        </td>
+                        {/* doName */}
+                        <td style={{ ...cell, minWidth: '65px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}`}
+                            list={doOpts.length > 0 ? `dl-do-${sig.id}` : undefined}
+                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_do: e.target.value || null }); }}
+                            onChange={() => {}} />
+                        </td>
+                        {/* daName */}
+                        <td style={{ ...cell, minWidth: '65px' }}>
+                          <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}`}
+                            list={daOpts.length > 0 ? `dl-da-${sig.id}` : undefined}
+                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_da: e.target.value || null }); }}
+                            onChange={() => {}} />
+                        </td>
+                      </>
+                    );
+                  })()}
+                  {/* FC */}
+                  <td style={{ ...cell, minWidth: '45px' }}>
+                    <input style={eInput} defaultValue={sig.iec61850_fc ?? ''} key={`fc-${sig.id}`}
+                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_fc: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
-                  <td style={{ ...cell, minWidth: '55px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}`}
-                      placeholder="1" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
+                  {/* CDC */}
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', minWidth: '50px' }}>{sig.iec61850_cdc ?? '—'}</td>
+                  {/* Dataset */}
+                  <td style={{ ...cell, minWidth: '90px' }}>
+                    <input style={eInput} defaultValue={sig.iec61850_dataset ?? ''} key={`ds-${sig.id}`}
+                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_dataset: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
-                  <td style={{ ...cell, minWidth: '110px' }}>
+                  {/* RCB */}
+                  <td style={{ ...cell, minWidth: '100px' }}>
                     <input style={eInput} defaultValue={sig.iec61850_rcb ?? ''} key={`rcb-${sig.id}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_rcb: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
-                  <td style={{ ...cell, minWidth: '110px' }}>
+                  {/* DSE */}
+                  <td style={{ ...cell, minWidth: '100px' }}>
                     <input style={eInput} defaultValue={sig.iec61850_dataset_entry ?? ''} key={`dse-${sig.id}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_dataset_entry: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
-                  {/* IEC 61850 library — read only */}
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', borderLeft: '2px solid var(--line)' }}>{sig.iec61850_ld ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_ln ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', minWidth: '90px' }}>{sig.iec61850_do_da ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_fc ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_cdc ?? '—'}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{sig.iec61850_dataset ?? '—'}</td>
+                  {/* Composite reference */}
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '120px' }}>
+                    {(() => {
+                      const ied = sig.iec61850_ied;
+                      const ld = sig.iec61850_ld;
+                      const pfx = sig.iec61850_ln_prefix ?? '';
+                      const ln = sig.iec61850_ln ?? '';
+                      const inst = sig.iec61850_ln_inst ?? '';
+                      const doN = sig.iec61850_do ?? '';
+                      const daN = sig.iec61850_da ?? '';
+                      if (!ld && !ln && !doN) return '—';
+                      const lnPart = `${pfx}${ln}${inst}`;
+                      const doPart = [doN, daN].filter(Boolean).join('.');
+                      const ref = [ld, lnPart].filter(Boolean).join('/') + (doPart ? `.${doPart}` : '');
+                      return ied ? `${ied}/${ref}` : ref;
+                    })()}
+                  </td>
                   <td style={{ ...cell, fontSize: '10px', color: 'var(--muted)' }}>{sig.phase_added}</td>
                   {reviewMode && (
                     <td style={{ ...cell, width: '80px', position: 'relative' }}>

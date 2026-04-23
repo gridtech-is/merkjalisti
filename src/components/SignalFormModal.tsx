@@ -72,9 +72,10 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
         iec61850_ln_inst: null,
         iec61850_rcb: null,
         iec61850_dataset_entry: null,
-        iec61850_ld: e.iec61850_ld ?? null,
+        iec61850_ld: null,
         iec61850_ln: e.iec61850_ln ?? null,
-        iec61850_do_da: e.iec61850_do_da ?? null,
+        iec61850_do: e.iec61850_do ?? null,
+        iec61850_da: e.iec61850_da ?? null,
         iec61850_fc: e.iec61850_fc ?? null,
         iec61850_cdc: e.iec61850_cdc ?? null,
         iec61850_dataset: e.iec61850_dataset ?? null,
@@ -121,7 +122,13 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
             label="Tæki (gildir fyrir öll valin merki)"
             value={equipmentCode}
             onChange={setEquipmentCode}
-            options={equipment.map(e => ({
+            options={[...equipment].sort((a, b) => {
+              const ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
+              const ta = a.category === 'ied' ? 7 : (ORDER[a.type ?? 'Annað'] ?? 6);
+              const tb = b.category === 'ied' ? 7 : (ORDER[b.type ?? 'Annað'] ?? 6);
+              if (ta !== tb) return ta - tb;
+              return a.code.localeCompare(b.code, 'is');
+            }).map(e => ({
               value: e.code,
               label: e.category === 'ied'
                 ? `${e.code} — IED${e.model ? ` ${e.model}` : ''}${e.ied_name ? ` (${e.ied_name})` : ''}`

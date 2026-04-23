@@ -12,7 +12,8 @@ import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
 import { exportBayToExcel } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Bay, Equipment, Project, SignalLibraryEntry, SignalState } from '../types';
+import type { BaySignal, Bay, Equipment, Project, SignalLibraryEntry, SignalState, IedFcda } from '../types';
+import { loadIedModel } from '../services/iedModelService';
 import { createUndoState, undoPush, undoUndo, undoRedo, type UndoState } from '../utils/undoStack';
 
 export function BayView() {
@@ -34,6 +35,7 @@ export function BayView() {
   const [reviewSending, setReviewSending] = useState(false);
   const [stationNumber, setStationNumber] = useState<string>('');
   const [undoState, setUndoState] = useState<UndoState<BaySignal[]>>(() => createUndoState([]));
+  const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -58,6 +60,16 @@ export function BayView() {
       setSignalLibrary(lib);
       setSignalStates(states);
       setStationNumber(project.station_number);
+      // Load IED models for all IED equipment
+      const ieds = eq.filter(e => e.category === 'ied');
+      Promise.all(ieds.map(async e => {
+        const model = await loadIedModel(api, projectId!, e.id);
+        return { code: e.code, model };
+      })).then(results => {
+        const map = new Map<string, IedFcda[]>();
+        results.forEach(({ code, model }) => { if (model) map.set(code, model); });
+        setIedModels(map);
+      });
     }).finally(() => setLoading(false));
   }, [api, projectId, bayId]);
 
@@ -150,6 +162,57 @@ export function BayView() {
     }
   };
 
+  const handleBatchUpdate = (patches: { id: string; patch: Partial<BaySignal> }[]) => {
+    const before = bayFileRef.current?.bay.signals ?? [];
+    let after = before;
+    for (const { id, patch } of patches) {
+      after = after.map(s => s.id === id ? { ...s, ...patch } : s);
+    }
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
+    setIsDirty(true);
+    if (projectId) {
+      for (const { id, patch } of patches) {
+        const oldSig = before.find(s => s.id === id);
+        if (!oldSig) continue;
+        for (const [field, newVal] of Object.entries(patch) as [string, unknown][]) {
+          const oldVal = (oldSig as unknown as Record<string, unknown>)[field];
+          if (oldVal === newVal) continue;
+          if (typeof oldVal === 'object' || typeof newVal === 'object') continue;
+          appendChange(api, projectId, {
+            user: userName,
+            phase: 'DESIGN',
+            type: 'FIELD_CHANGED',
+            target_id: id,
+            target_type: 'signal',
+            target_parent_id: bayId ?? null,
+            field,
+            old_value: oldVal != null ? String(oldVal) : null,
+            new_value: newVal != null ? String(newVal) : null,
+            comment: `${field} breytt`,
+          });
+        }
+      }
+    }
+  };
+
+  const EQ_TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
+  const handleSortByType = () => {
+    const signals = bayFileRef.current?.bay.signals ?? [];
+    const eqMap = new Map(allEquipmentRef.current.map(e => [e.code, e]));
+    const sorted = [...signals].sort((a, b) => {
+      const ea = eqMap.get(a.equipment_code);
+      const eb = eqMap.get(b.equipment_code);
+      const ta = ea?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[ea?.type ?? 'Annað'] ?? 6);
+      const tb = eb?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[eb?.type ?? 'Annað'] ?? 6);
+      if (ta !== tb) return ta - tb;
+      const codeComp = a.equipment_code.localeCompare(b.equipment_code, 'is');
+      if (codeComp !== 0) return codeComp;
+      return a.signal_name.localeCompare(b.signal_name, 'is');
+    });
+    handleReorder(sorted.map(s => s.id));
+  };
+
   const handleReorder = (newOrder: string[]) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     const map = new Map(before.map(s => [s.id, s]));
@@ -159,17 +222,18 @@ export function BayView() {
     setIsDirty(true);
   };
 
-  const handleDuplicate = (ids: string[], at: number) => {
+  const handleDuplicate = (ids: string[], at: number, count = 1) => {
     const before = bayFileRef.current?.bay.signals ?? [];
-    const copies = before
-      .filter(s => ids.includes(s.id))
-      .map(s => ({
+    const originals = before.filter(s => ids.includes(s.id));
+    const copies = Array.from({ length: count }, () =>
+      originals.map(s => ({
         ...s,
         id: crypto.randomUUID(),
         group_label: null,
         fat_tested: false, fat_tested_by: null, fat_tested_at: null, fat_result: null,
         sat_tested: false, sat_tested_by: null, sat_tested_at: null, sat_result: null,
-      }));
+      }))
+    ).flat();
     const insertAt = Math.max(0, Math.min(at - 1, before.length));
     const after = [...before];
     after.splice(insertAt, 0, ...copies);
@@ -369,6 +433,7 @@ export function BayView() {
               >
                 ↪ Endurtaka
               </Button>
+              <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
@@ -391,6 +456,7 @@ export function BayView() {
 
           {isLocked && (
             <>
+              <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
@@ -411,7 +477,9 @@ export function BayView() {
         states={signalStates}
         bayDisplayId={bay.display_id}
         reviewMode={isInReview || bay.signals.some(s => s.review_flagged)}
+        iedModels={iedModels}
         onUpdate={handleUpdate}
+        onBatchUpdate={handleBatchUpdate}
         onDelete={handleDelete}
         onDuplicate={handleDuplicate}
         onReorder={handleReorder}
