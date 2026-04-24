@@ -14,6 +14,13 @@ function suggestDataset(lnClass: string | null, fc: string | null): string | nul
   return null;
 }
 
+function assignDataset(base: string, signals: BaySignal[], maxSize: number): string {
+  for (let n = 1; ; n++) {
+    const name = `${base}${n}`;
+    if (signals.filter(s => s.iec61850_dataset === name).length < maxSize) return name;
+  }
+}
+
 interface Props {
   signals: BaySignal[];
   equipment: Equipment[];
@@ -22,6 +29,7 @@ interface Props {
   bayDisplayId?: string;
   reviewMode?: boolean;
   iedModels?: Map<string, IedFcda[]>;
+  maxDatasetSize?: number;
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
   onBatchUpdate?: (patches: { id: string; patch: Partial<BaySignal> }[]) => void;
   onDelete: (signalId: string) => void;
@@ -79,7 +87,7 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, iedModels, onUpdate, onBatchUpdate, onDelete, onDuplicate, onReorder }: Props) {
+export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, iedModels, maxDatasetSize = 1000, onUpdate, onBatchUpdate, onDelete, onDuplicate, onReorder }: Props) {
   // Build lookup index: code → library entry
   const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
   // Build state index: id → SignalState
@@ -769,7 +777,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                               const ref = `${f.ldInst}/${f.prefix}${f.lnClass}${f.lnInst}.${f.doName}${f.daName ? '.'+f.daName : ''}`;
                               return (
                                 <div key={idx} onClick={() => {
-                                  const ds = !sig.iec61850_dataset ? suggestDataset(f.lnClass, f.fc) : null;
+                                  const dsBase = !sig.iec61850_dataset ? suggestDataset(f.lnClass, f.fc) : null;
+                                  const ds = dsBase ? assignDataset(dsBase, signals, maxDatasetSize) : null;
                                   onUpdate(sig.id, {
                                     iec61850_ld: f.ldInst,
                                     iec61850_ln_prefix: f.prefix || null,
@@ -844,8 +853,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 if (pfxs.length === 1) patch.iec61850_ln_prefix = pfxs[0] || null;
                               }
                               if (ln && !sig.iec61850_dataset) {
-                                const ds = suggestDataset(ln, sig.iec61850_fc);
-                                if (ds) { patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
+                                const dsBase = suggestDataset(ln, sig.iec61850_fc);
+                                if (dsBase) { const ds = assignDataset(dsBase, signals, maxDatasetSize); patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
                               }
                               onUpdate(sig.id, patch);
                             }}
@@ -896,8 +905,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 if (match?.fc) patch.iec61850_fc = match.fc;
                                 if (match?.cdc) patch.iec61850_cdc = match.cdc;
                                 if (!sig.iec61850_dataset) {
-                                  const ds = suggestDataset(sig.iec61850_ln, match?.fc ?? sig.iec61850_fc);
-                                  if (ds) { patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
+                                  const dsBase = suggestDataset(sig.iec61850_ln, match?.fc ?? sig.iec61850_fc);
+                                  if (dsBase) { const ds = assignDataset(dsBase, signals, maxDatasetSize); patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
                                 }
                               }
                               onUpdate(sig.id, patch);
