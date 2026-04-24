@@ -79,7 +79,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - Data repo: `main`, allt pushað ✅
 
 ### Óklárað / framundan
-- **SaaS/viðskiptavinir spec** — `docs/superpowers/specs/2026-04-23-saas-vidskiptavinir-design.md` — Supabase, RLS, RBAC, IP allowlist, audit log
+- **SaaS/viðskiptavinir spec** ✅ committað — `docs/superpowers/specs/2026-04-23-saas-vidskiptavinir-design.md` — Supabase, RLS, RBAC, IP allowlist, audit log — **framkvæmd ekki hafin**
 - **Plan 5** — ekki skilgreint enn
 
 ### IEC 61850 gagnalíkan
@@ -88,8 +88,8 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - IED módel geymt sem `IedFcda[]` í `projects/{id}/ied_models/{equipment.id}.json`
 
 ### Git staða
-- App repo: á `main`, **10 commits ópushaðir** — push á GitHub
-- Data repo: clean
+- App repo: `main`, allt pushað ✅
+- Data repo: `main`, allt pushað ✅
 
 ### Athugið á nýrri tölvu
 ```bash
