@@ -1033,7 +1033,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       const lnPart = `${pfx}${ln}${inst}`;
                       const doPart = [doN, daN].filter(Boolean).join('.');
                       const ref = [ld, lnPart].filter(Boolean).join('/') + (doPart ? `.${doPart}` : '');
-                      return ied ? `${ied}/${ref}` : ref;
+                      return ied ? `${ied}${ref}` : ref;
                     })()}
                   </td>
                   <td style={{ ...cell, fontSize: '10px', color: 'var(--muted)' }}>{sig.phase_added}</td>
