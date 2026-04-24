@@ -178,6 +178,8 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     );
   }
 
+  const datasetOpts = [...new Set(signals.map(s => s.iec61850_dataset).filter(Boolean))].sort() as string[];
+
   const allSelected = selected.size === signals.length;
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(signals.map(s => s.id)));
   const toggle = (id: string) => setSelected(prev => {
@@ -484,6 +486,11 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
         </div>
       </div>
 
+      {datasetOpts.length > 0 && (
+        <datalist id="dl-dataset">
+          {datasetOpts.map(v => <option key={v} value={v} />)}
+        </datalist>
+      )}
       <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
           <thead>
@@ -823,7 +830,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                           onChange={() => {}} />
                       )}
                       {sig.iec61850_ied && iedModels?.has(sig.iec61850_ied) && (
-                        <button type="button" onClick={() => { const opening = fcdaPickerId !== sig.id; setFcdaPickerId(opening ? sig.id : null); setFcdaSearch(opening ? (sig.iec61850_ln ?? '') : ''); }}
+                        <button type="button" onClick={() => { const opening = fcdaPickerId !== sig.id; setFcdaPickerId(opening ? sig.id : null); setFcdaSearch(opening ? `${sig.iec61850_ln_prefix ?? ''}${sig.iec61850_ln ?? ''}` : ''); }}
                           style={{ flexShrink: 0, background: fcdaPickerId === sig.id ? 'var(--accent)' : 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: '3px', cursor: 'pointer', padding: '2px 4px', fontSize: '11px', color: fcdaPickerId === sig.id ? '#fff' : 'var(--text-secondary)' }}
                           title="Velja úr módeli">≡</button>
                       )}
@@ -883,9 +890,9 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                     const pfxOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && f.lnClass === ln).map(f => f.prefix))] : [];
                     const ldOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.ldInst))] : [];
                     const pfxOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.prefix))].sort() : [];
-                    const doOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.doName))].sort() : [];
-                    const instOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.lnInst).filter(Boolean))].sort() : [];
-                    const daOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_do || f.doName === sig.iec61850_do)).map(f => f.daName).filter(Boolean))].sort() : [];
+                    const doOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.doName))].sort() : [];
+                    const instOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.lnInst).filter(Boolean))].sort() : [];
+                    const daOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) && (!sig.iec61850_do || f.doName === sig.iec61850_do)).map(f => f.daName).filter(Boolean))].sort() : [];
                     return (
                       <>
                         {ldOpts.length > 0 && <datalist id={`dl-ld-${sig.id}`}>{ldOpts.map(v => <option key={v} value={v} />)}</datalist>}
@@ -895,21 +902,21 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         {doOpts.length > 0 && <datalist id={`dl-do-${sig.id}`}>{doOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {daOpts.length > 0 && <datalist id={`dl-da-${sig.id}`}>{daOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         <td style={{ ...cell, minWidth: '60px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_ld ?? ''} key={`ld-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_ld ?? ''} key={`ld-${sig.id}-${sig.iec61850_ld}`}
                             list={ldOpts.length > 0 ? `dl-ld-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ld: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* Prefix */}
                         <td style={{ ...cell, minWidth: '55px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}-${sig.iec61850_ln_prefix}`}
                             list={pfxOpts.length > 1 ? `dl-pfx-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* lnClass */}
                         <td style={{ ...cell, minWidth: '65px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_ln ?? ''} key={`ln-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_ln ?? ''} key={`ln-${sig.id}-${sig.iec61850_ln}`}
                             list={lnOpts.length > 0 ? `dl-ln-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
@@ -927,14 +934,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         </td>
                         {/* lnInst */}
                         <td style={{ ...cell, minWidth: '50px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}-${sig.iec61850_ln_inst}`}
                             list={instOpts.length > 0 ? `dl-inst-${sig.id}` : undefined}
                             placeholder="1" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* doName */}
                         <td style={{ ...cell, minWidth: '65px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}-${sig.iec61850_do}`}
                             list={doOpts.length > 0 ? `dl-do-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
@@ -944,6 +951,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 const match = model.find(f =>
                                   (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
                                   (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) &&
+                                  (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
                                   f.doName === doName
                                 );
                                 if (match?.cdc) patch.iec61850_cdc = match.cdc;
@@ -954,7 +962,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         </td>
                         {/* daName */}
                         <td style={{ ...cell, minWidth: '65px' }}>
-                          <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}`}
+                          <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}-${sig.iec61850_da}`}
                             list={daOpts.length > 0 ? `dl-da-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
@@ -964,6 +972,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 const match = model.find(f =>
                                   (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
                                   (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) &&
+                                  (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
                                   (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
                                   f.daName === daName
                                 );
@@ -988,7 +997,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   {/* Dataset */}
                   <td style={{ ...cell, minWidth: '90px' }}>
                     <input style={eInput} defaultValue={sig.iec61850_dataset ?? ''} key={`ds-${sig.id}-${sig.iec61850_dataset}`}
-                      onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_dataset: e.target.value || null }); }}
+                      list="dl-dataset"
+                      onFocus={onFocus} onBlur={e => {
+                        onBlurReset(e);
+                        const ds = e.target.value || null;
+                        const patch: Partial<BaySignal> = { iec61850_dataset: ds };
+                        if (ds && !sig.iec61850_rcb) patch.iec61850_rcb = `r${ds}`;
+                        onUpdate(sig.id, patch);
+                      }}
                       onChange={() => {}} />
                   </td>
                   {/* RCB */}
@@ -999,7 +1015,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   </td>
                   {/* DSE */}
                   <td style={{ ...cell, minWidth: '100px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_dataset_entry ?? ''} key={`dse-${sig.id}`}
+                    <input style={eInput} defaultValue={sig.iec61850_dataset_entry ?? ''} key={`dse-${sig.id}-${sig.iec61850_dataset_entry}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_dataset_entry: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>

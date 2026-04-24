@@ -30,6 +30,7 @@ function makeBaySignal(overrides: Partial<BaySignal> = {}): BaySignal {
     iec61850_fc: null,
     iec61850_cdc: null,
     iec61850_dataset: null,
+    unit_id: null,
     is_alarm: false,
     alarm_class: null,
     state_alarm_map: null,

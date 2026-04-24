@@ -1,6 +1,6 @@
 import type { GitHubApi } from '../github/api';
 import type { IedFcda } from '../types';
-import { parseScd, type ScdIed } from './scdParser';
+import { parseScd, extractDataSets, type ScdIed } from './scdParser';
 
 function modelPath(projectId: string, equipmentId: string): string {
   return `projects/${projectId}/ied_models/${equipmentId}.json`;
@@ -43,8 +43,32 @@ export function parseModel(xmlText: string): ParsedIedMeta {
   }
   // Pick the IED with the most LDs — avoids template/stub IEDs in multi-IED files
   const ied = ieds.reduce((best, cur) => cur.lds.length > best.lds.length ? cur : best, ieds[0]);
+  const flat = flattenIedModel(ied);
+
+  // Enrich with DataSet names from <DataSet><FCDA> elements in the ICD
+  const dsFcdas = extractDataSets(xmlText, ied.name);
+  if (dsFcdas.length > 0) {
+    for (const dsf of dsFcdas) {
+      // Match by ldInst + lnClass + lnInst + prefix + doName + fc
+      // daName may be absent in DataSet FCDA (references whole DO)
+      for (const f of flat) {
+        if (
+          f.ldInst === dsf.ldInst &&
+          f.lnClass === dsf.lnClass &&
+          f.lnInst === dsf.lnInst &&
+          f.prefix === dsf.prefix &&
+          f.doName === dsf.doName &&
+          f.fc === dsf.fc &&
+          (!dsf.daName || f.daName === dsf.daName || f.daName.startsWith(dsf.daName + '.'))
+        ) {
+          f.dataset = dsf.dataset;
+        }
+      }
+    }
+  }
+
   return {
-    fcda: flattenIedModel(ied),
+    fcda: flat,
     iedName: ied.name,
     manufacturer: ied.manufacturer,
     typeCode: ied.model,

@@ -80,6 +80,7 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
         iec61850_cdc: e.iec61850_cdc ?? null,
         iec61850_dataset: e.iec61850_dataset ?? null,
         library_id: e.id,
+        unit_id: e.unit_id ?? null,
         is_alarm: e.is_alarm,
         alarm_class: e.alarm_class ?? null,
         state_alarm_map: null,

@@ -6,15 +6,16 @@ import { useProjectNav } from '../context/ProjectNavContext';
 import { loadProject, saveProjectPhase } from '../services/projectService';
 import { exportAllBaysToExcel, exportEquipmentTemplate, importEquipmentFromExcel } from '../services/exportService';
 import { ChangelogTab } from '../components/ChangelogTab';
-import { listBays, loadBay, renameStation, sendBayForReview } from '../services/bayService';
+import { listBays, loadBay, renameStation, sendBayForReview, deleteBay } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
 import { ImportScdModal } from '../components/ImportScdModal';
-import type { Project, Equipment, EquipmentTemplate, Bay, BaySignal, ApparatusType, ProjectPhase, BayStatus } from '../types';
+import type { Project, Equipment, EquipmentTemplate, Bay, BaySignal, ApparatusType, ProjectPhase, BayStatus, IedFcda } from '../types';
 import { StationSignalsTab } from '../components/StationSignalsTab';
 import { OverviewTab } from '../components/OverviewTab';
 import { loadStation } from '../services/stationService';
 import { parseModel, saveModel, loadIedModel } from '../services/iedModelService';
 import { createTemplateFromIED } from '../services/equipmentTemplateService';
+import { insertDataSetsIntoIcd } from '../services/datasetService';
 
 type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
 type EqTab = 'apparatus' | 'ied';
@@ -30,7 +31,7 @@ const APPARATUS_TYPES: ApparatusType[] = [
   'Aflrofi', 'Skilrofi', 'Jarðrofi', 'Spennir', 'Stjórnbúnaður', 'Annað',
 ];
 
-const PHASE_ORDER: ProjectPhase[] = ['DESIGN', 'FROZEN', 'REVIEW', 'FAT', 'SAT'];
+const PHASE_ORDER: ProjectPhase[] = ['DESIGN', 'REVIEW', 'FROZEN', 'FAT', 'SAT'];
 const PHASE_LABELS: Record<ProjectPhase, string> = {
   DESIGN: 'Hönnun', FROZEN: 'Læst', REVIEW: 'Yfirferð', FAT: 'FAT', SAT: 'SAT',
 };
@@ -87,6 +88,116 @@ function emptyIED(code: string, iedName: string, tmpl: EquipmentTemplate | null,
     template_id: tmpl?.id ?? null,
     description: desc || tmpl?.description || '',
   };
+}
+
+function DataSetModal({ ied, signals, onClose }: {
+  ied: Equipment;
+  signals: BaySignal[];
+  onClose: () => void;
+}) {
+  const [processing, setProcessing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [done, setDone] = React.useState(false);
+
+  const eligible = signals.filter(s => s.iec61850_dataset && s.iec61850_dataset !== 'N/A' && s.iec61850_ld && s.iec61850_ln && s.iec61850_do && s.iec61850_fc);
+  const byDs = new Map<string, BaySignal[]>();
+  for (const s of eligible) {
+    const ds = s.iec61850_dataset!;
+    if (!byDs.has(ds)) byDs.set(ds, []);
+    byDs.get(ds)!.push(s);
+  }
+
+  const handleFile = async (file: File) => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const xmlText = await file.text();
+      const iedXmlName = ied.ied_name ?? ied.code;
+      const result = insertDataSetsIntoIcd(xmlText, signals, iedXmlName);
+      if (!result) {
+        setError('Gat ekki lesið ICD skrána eða fundið IED í henni.');
+        return;
+      }
+      const blob = new Blob([result], { type: 'application/xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name.replace(/(\.[^.]+)$/, '_updated$1') || `${ied.code}_updated.icd`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Villa kom upp.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', width: '520px', maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+          <div>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>DataSet / ReportControl — {ied.code}</h2>
+            <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '4px 0 0' }}>
+              {byDs.size > 0
+                ? `Bæta við ${byDs.size} DataSet og ${byDs.size} ReportControl í ICD/IID skrá`
+                : 'Engin merki með IEC 61850 DataSet gögn'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-secondary)' }}>✕</button>
+        </div>
+
+        {byDs.size === 0 ? (
+          <p style={{ color: 'var(--muted)', fontSize: '13px', flex: 1 }}>
+            Engin merki með <code>iec61850_dataset</code> gögn fundust fyrir þetta IED.
+          </p>
+        ) : (
+          <>
+            <div style={{ flex: 1, overflow: 'auto', marginBottom: 'var(--space-4)' }}>
+              {Array.from(byDs.entries()).map(([dsName, sigs]) => {
+                const rcbName = sigs.find(s => s.iec61850_rcb)?.iec61850_rcb ?? `rcb${dsName}`;
+                const isBuffered = sigs[0]?.iec61850_fc === 'ST';
+                return (
+                  <div key={dsName} style={{ marginBottom: 'var(--space-2)', padding: '8px 12px', background: 'var(--surface-alt)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '13px', color: 'var(--accent)' }}>{dsName}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        {sigs.length} FCDA · rcb: <code style={{ color: 'var(--text)' }}>{rcbName}</code> · {isBuffered ? 'buffered' : 'unbuffered'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {done ? (
+              <p style={{ fontSize: '13px', color: 'var(--success)', marginBottom: 'var(--space-4)', textAlign: 'center' }}>
+                ✓ Skrá uppfærð og sótt
+              </p>
+            ) : (
+              <label style={{
+                display: 'block', padding: 'var(--space-4)', border: '2px dashed var(--line)',
+                borderRadius: 'var(--radius-sm)', textAlign: 'center', cursor: processing ? 'not-allowed' : 'pointer',
+                color: 'var(--text-secondary)', fontSize: '13px', marginBottom: 'var(--space-4)',
+                opacity: processing ? 0.6 : 1,
+              }}>
+                {processing ? 'Vinnur...' : '↑ Veldu ICD / IID / CID skrá til að bæta DataSet við'}
+                <input type="file" accept=".icd,.iid,.cid,.scd,.xml" style={{ display: 'none' }} disabled={processing}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+              </label>
+            )}
+
+            {error && <p style={{ fontSize: '12px', color: 'var(--danger)', marginBottom: 'var(--space-3)' }}>{error}</p>}
+          </>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text)' }}>Loka</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface SaveTemplateModalProps {
@@ -214,6 +325,8 @@ export function ProjectView() {
   const [stationStatus, setStationStatus] = useState<BayStatus | null>(null);
   const [savingStation, setSavingStation] = useState(false);
   const [stationDraft, setStationDraft] = useState('');
+  const [renamingProject, setRenamingProject] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
 
   // Apparatus new row
   const [newACode, setNewACode] = useState('');
@@ -227,13 +340,14 @@ export function ProjectView() {
   const [newIDesc, setNewIDesc] = useState('');
 
   // IED models
-  const [iedModels, setIedModels] = useState<Map<string, { count: number; name: string }>>(new Map());
+  const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
   const [modelUploading, setModelUploading] = useState<string | null>(null);
   const [iedMismatch, setIedMismatch] = useState<{ eq: Equipment; fcda: import('../types').IedFcda[]; iedName: string } | null>(null);
 
   // Save template modal
   const [saveTemplateIed, setSaveTemplateIed] = useState<Equipment | null>(null);
   const [allBaySignals, setAllBaySignals] = useState<BaySignal[]>([]);
+  const [dataSetIed, setDataSetIed] = useState<Equipment | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -279,7 +393,7 @@ export function ProjectView() {
         const next = new Map(prev);
         results.forEach(({ id, model }) => {
           if (model && model.length > 0) {
-            next.set(id, { count: model.length, name: '' });
+            next.set(id, model);
           }
         });
         return next;
@@ -301,7 +415,7 @@ export function ProjectView() {
         return;
       }
       await saveModel(api, projectId, eq.id, fcda, iedName);
-      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+      setIedModels(prev => new Map(prev).set(eq.id, fcda));
       const patch: Partial<Equipment> = {};
       if (manufacturer) patch.manufacturer = manufacturer;
       if (typeCode) patch.model = typeCode;
@@ -321,7 +435,7 @@ export function ProjectView() {
       const updated = equipment.map(e => e.id === eq.id ? { ...e, ied_name: iedName } : e);
       await saveEquipment(updated);
       await saveModel(api, projectId, eq.id, fcda, iedName);
-      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+      setIedModels(prev => new Map(prev).set(eq.id, fcda));
     } finally {
       setModelUploading(null);
     }
@@ -334,7 +448,7 @@ export function ProjectView() {
     setModelUploading(eq.id);
     try {
       await saveModel(api, projectId, eq.id, fcda, iedName);
-      setIedModels(prev => new Map(prev).set(eq.id, { count: fcda.length, name: iedName }));
+      setIedModels(prev => new Map(prev).set(eq.id, fcda));
     } finally {
       setModelUploading(null);
     }
@@ -387,6 +501,23 @@ export function ProjectView() {
     } finally {
       setSavingStation(false);
     }
+  };
+
+  const commitProjectName = async () => {
+    if (!project || !projectId) return;
+    const next = projectNameDraft.trim();
+    if (!next || next === project.name) { setRenamingProject(false); return; }
+    try {
+      const updated: Project = { ...project, name: next };
+      const newSha = await api.writeJson(
+        `projects/${projectId}/project.json`, updated, projectSha,
+        `Endurnefna verkefni: ${project.name} → ${next}`
+      );
+      setProject(updated);
+      setProjectSha(newSha);
+      setNavProject(projectId!, next);
+    } catch { alert('Villa við að endurnefna verkefni.'); }
+    setRenamingProject(false);
   };
 
   const handleAddApparatus = async () => {
@@ -461,6 +592,21 @@ export function ProjectView() {
     }
   };
 
+  const handleDeleteBay = async (bayId: string, displayId: string) => {
+    if (!projectId) return;
+    if (!confirm(`Eyða reit ${displayId}?`)) return;
+    setSendingReview(true);
+    try {
+      const bayFile = await loadBay(api, projectId, bayId);
+      await deleteBay(api, projectId, bayFile, userName);
+      setBays(prev => prev.filter(b => b.id !== bayId));
+    } catch {
+      alert('Villa við að eyða reit. Reyndu aftur.');
+    } finally {
+      setSendingReview(false);
+    }
+  };
+
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (loadError || !project) return (
     <div>
@@ -528,7 +674,23 @@ export function ProjectView() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{project.name}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {renamingProject ? (
+              <input
+                autoFocus
+                value={projectNameDraft}
+                onChange={e => setProjectNameDraft(e.target.value)}
+                onBlur={commitProjectName}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenamingProject(false); }}
+                style={{ fontSize: '20px', fontWeight: 700, background: 'var(--surface-alt)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '1px 6px', outline: 'none', width: '260px' }}
+              />
+            ) : (
+              <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{project.name}</h1>
+            )}
+            <button type="button" onClick={() => { setProjectNameDraft(project.name); setRenamingProject(true); }}
+              title="Endurnefna verkefni"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '13px', padding: '2px 4px', lineHeight: 1 }}>✏</button>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '2px' }}>
             <label style={{ fontSize: '12px', color: 'var(--muted)' }}>Stöðvarnúmer:</label>
             <input
@@ -635,7 +797,8 @@ export function ProjectView() {
                       <div>
                         <div style={{ fontWeight: 600 }}>{bay.display_id}</div>
                         <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                          {bay.signals.length} merki · {bay.equipment_ids.length} tæki
+                          {bay.description && <span style={{ marginRight: '6px', color: 'var(--text-secondary)' }}>{bay.description}</span>}
+                          {bay.signals.length} merki · {new Set(bay.signals.map(s => s.equipment_code)).size} tæki
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -647,10 +810,16 @@ export function ProjectView() {
                           border: `1px solid ${statusColor}`,
                         }}>{statusLabel}</span>
                         {bay.status === 'DRAFT' && (
-                          <Button size="sm" variant="ghost" disabled={sendingReview}
-                            onClick={e => { e.stopPropagation(); handleSendBayForReview(bay.id); }}>
-                            → Yfirferð
-                          </Button>
+                          <>
+                            <Button size="sm" variant="ghost" disabled={sendingReview}
+                              onClick={e => { e.stopPropagation(); handleSendBayForReview(bay.id); }}>
+                              → Yfirferð
+                            </Button>
+                            <Button size="sm" variant="danger" disabled={sendingReview}
+                              onClick={e => { e.stopPropagation(); handleDeleteBay(bay.id, bay.display_id); }}>
+                              Eyða
+                            </Button>
+                          </>
                         )}
                         <span style={{ color: 'var(--muted)', fontSize: '18px' }}>›</span>
                       </div>
@@ -723,7 +892,7 @@ export function ProjectView() {
                   <tr key={eq.id}>
                     <td style={{ ...cellStyle, minWidth: '80px' }}>
                       <input style={{ ...editInput, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}
-                        defaultValue={eq.code} key={`ac-${eq.id}`}
+                        defaultValue={eq.code} key={`ac-${eq.id}-${eq.code}`}
                         onFocus={focusInput} onBlur={e => { blurInput(e); const v = e.target.value.trim().toUpperCase(); if (v && v !== eq.code) handleUpdate(eq.id, { code: v }); }}
                         onChange={() => {}} />
                     </td>
@@ -734,7 +903,7 @@ export function ProjectView() {
                       </select>
                     </td>
                     <td style={{ ...cellStyle, width: '100%' }}>
-                      <input style={editInput} defaultValue={eq.description} key={`ad-${eq.id}`}
+                      <input style={editInput} defaultValue={eq.description} key={`ad-${eq.id}-${eq.description}`}
                         placeholder="Lýsing" onFocus={focusInput}
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { description: e.target.value }); }}
                         onChange={() => {}} />
@@ -786,13 +955,13 @@ export function ProjectView() {
                   <tr key={eq.id}>
                     <td style={{ ...cellStyle, minWidth: '80px' }}>
                       <input style={{ ...editInput, fontFamily: 'monospace', color: 'var(--accent)', fontWeight: 600 }}
-                        defaultValue={eq.code} key={`ic-${eq.id}`}
+                        defaultValue={eq.code} key={`ic-${eq.id}-${eq.code}`}
                         onFocus={focusInput} onBlur={e => { blurInput(e); const v = e.target.value.trim().toUpperCase(); if (v && v !== eq.code) handleUpdate(eq.id, { code: v }); }}
                         onChange={() => {}} />
                     </td>
                     <td style={{ ...cellStyle, minWidth: '90px' }}>
                       <input style={{ ...editInput, fontFamily: 'monospace' }}
-                        defaultValue={eq.ied_name ?? ''} key={`in-${eq.id}`} placeholder="Q0IED"
+                        defaultValue={eq.ied_name ?? ''} key={`in-${eq.id}-${eq.ied_name}`} placeholder="Q0IED"
                         onFocus={focusInput} onBlur={e => { blurInput(e); handleUpdate(eq.id, { ied_name: e.target.value || null }); }}
                         onChange={() => {}} />
                     </td>
@@ -814,25 +983,25 @@ export function ProjectView() {
                       </select>
                     </td>
                     <td style={{ ...cellStyle, minWidth: '90px' }}>
-                      <input style={editInput} defaultValue={eq.manufacturer ?? ''} key={`im-${eq.id}`}
+                      <input style={editInput} defaultValue={eq.manufacturer ?? ''} key={`im-${eq.id}-${eq.manufacturer}`}
                         placeholder="ABB" onFocus={focusInput}
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { manufacturer: e.target.value || null }); }}
                         onChange={() => {}} />
                     </td>
                     <td style={{ ...cellStyle, minWidth: '80px' }}>
-                      <input style={editInput} defaultValue={eq.model ?? ''} key={`imd-${eq.id}`}
+                      <input style={editInput} defaultValue={eq.model ?? ''} key={`imd-${eq.id}-${eq.model}`}
                         placeholder="REL670" onFocus={focusInput}
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { model: e.target.value || null }); }}
                         onChange={() => {}} />
                     </td>
                     <td style={{ ...cellStyle, minWidth: '100px' }}>
-                      <input style={editInput} defaultValue={eq.config_version ?? ''} key={`icv-${eq.id}`}
+                      <input style={editInput} defaultValue={eq.config_version ?? ''} key={`icv-${eq.id}-${eq.config_version}`}
                         placeholder="ver1.2.3" onFocus={focusInput}
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { config_version: e.target.value || null }); }}
                         onChange={() => {}} />
                     </td>
                     <td style={{ ...cellStyle, width: '100%' }}>
-                      <input style={editInput} defaultValue={eq.description} key={`id-${eq.id}`}
+                      <input style={editInput} defaultValue={eq.description} key={`id-${eq.id}-${eq.description}`}
                         placeholder="Lýsing" onFocus={focusInput}
                         onBlur={e => { blurInput(e); handleUpdate(eq.id, { description: e.target.value }); }}
                         onChange={() => {}} />
@@ -849,7 +1018,7 @@ export function ProjectView() {
                             background: iedModels.has(eq.id) ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
                             color: iedModels.has(eq.id) ? 'var(--accent)' : 'var(--text-secondary)',
                           }}>
-                            {modelUploading === eq.id ? '...' : iedModels.has(eq.id) ? `✓ ${iedModels.get(eq.id)!.count} merki` : '📂 ICD'}
+                            {modelUploading === eq.id ? '...' : iedModels.has(eq.id) ? `✓ ${iedModels.get(eq.id)!.length} merki` : '📂 ICD'}
                           </span>
                         </label>
                         {allBaySignals.some(s => s.equipment_code === eq.code) && (
@@ -865,6 +1034,21 @@ export function ProjectView() {
                             title="Gera tækjasniðmát úr þessum IED"
                           >
                             ⊕ Sniðmát
+                          </button>
+                        )}
+                        {allBaySignals.some(s => s.iec61850_ied === eq.code && s.iec61850_dataset && s.iec61850_dataset !== 'N/A') && (
+                          <button
+                            type="button"
+                            onClick={() => setDataSetIed(eq)}
+                            style={{
+                              display: 'inline-block', padding: '3px 8px', fontSize: '11px',
+                              border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title="Búa til DataSet og ReportControl"
+                          >
+                            ⊞ DataSet
                           </button>
                         )}
                         <Button variant="danger" size="sm" disabled={saving} onClick={() => handleDelete(eq.id)}>Eyða</Button>
@@ -935,6 +1119,14 @@ export function ProjectView() {
             } finally { setSaving(false); }
           }}
           onClose={() => setShowScd(false)}
+        />
+      )}
+
+      {dataSetIed && (
+        <DataSetModal
+          ied={dataSetIed}
+          signals={allBaySignals.filter(s => s.iec61850_ied === dataSetIed.code)}
+          onClose={() => setDataSetIed(null)}
         />
       )}
 

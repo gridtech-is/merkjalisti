@@ -108,6 +108,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
       voltage_level: '',
       bay_name: 'Stöðvarmerki',
       display_id: 'STÖÐ',
+      description: null,
       equipment_ids: [],
       signals: stationSignals,
       status: 'DRAFT',

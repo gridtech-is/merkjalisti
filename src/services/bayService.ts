@@ -30,6 +30,7 @@ export async function createBay(
     voltage_level: voltageLevel,
     bay_name: bayName,
     display_id: `${stationNumber}${bayName}`,
+    description: null,
     equipment_ids: [],
     signals: signals.map(s => ({
       ...s,
@@ -70,7 +71,8 @@ export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]
           review_comment: s.review_comment ?? null,
         })),
       };
-    });
+    })
+    .filter(b => b.status !== 'DELETED');
 }
 
 export async function loadBay(api: GitHubApi, projectId: string, bayId: string): Promise<BayFile> {
@@ -231,6 +233,23 @@ export async function rejectBay(
     comment: `Reitur hafnaður: ${bayFile.bay.display_id}. ${comment}`,
   });
   return { bay: updated, sha };
+}
+
+export async function deleteBay(
+  api: GitHubApi,
+  projectId: string,
+  bayFile: BayFile,
+  deletedBy: string
+): Promise<void> {
+  const updated: Bay = { ...bayFile.bay, status: 'DELETED' };
+  const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
+  await api.writeJson(path, updated, bayFile.sha, `[DESIGN] Eyða reit: ${bayFile.bay.display_id}`);
+  await appendChange(api, projectId, {
+    user: deletedBy, phase: 'DESIGN', type: 'PHASE_CHANGED',
+    target_id: bayFile.bay.id, target_type: 'bay',
+    field: null, old_value: 'DRAFT', new_value: 'DELETED',
+    comment: `Reit eytt: ${bayFile.bay.display_id}`,
+  });
 }
 
 export async function renameStation(

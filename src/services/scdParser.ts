@@ -40,7 +40,7 @@ export interface ScdParseResult {
 // ─── DataTypeTemplates index ───────────────────────────────────────────────
 
 interface LnTypeEntry { lnClass: string; doRefs: Array<{ name: string; typeId: string }> }
-interface DoTypeEntry { cdc: string; das: Array<{ name: string; fc: string; bType: string; typeId: string }> }
+interface DoTypeEntry { cdc: string; das: Array<{ name: string; fc: string; bType: string; typeId: string }>; sdos: Array<{ name: string; typeId: string }> }
 interface DaTypeEntry { bdas: Array<{ name: string; bType: string; typeId: string }> }
 
 function buildDtIndex(doc: Document): {
@@ -74,7 +74,11 @@ function buildDtIndex(doc: Document): {
         typeId: daEl.getAttribute('type') ?? '',
       });
     });
-    doTypes.set(id, { cdc, das });
+    const sdos: DoTypeEntry['sdos'] = [];
+    dot.querySelectorAll(':scope > SDO').forEach(sdoEl => {
+      sdos.push({ name: sdoEl.getAttribute('name') ?? '', typeId: sdoEl.getAttribute('type') ?? '' });
+    });
+    doTypes.set(id, { cdc, das, sdos });
   });
 
   doc.querySelectorAll('DataTypeTemplates > DAType').forEach(dat => {
@@ -119,6 +123,28 @@ function expandDa(
   }
 }
 
+// Handles SDO (sub-data objects) in DOType — e.g. WYE.phsA → CMV.cVal.mag.f
+function expandSdo(
+  doName: string,
+  sdoTypeId: string,
+  dt: ReturnType<typeof buildDtIndex>,
+  result: ScdDoDa[],
+): void {
+  const sdoType = dt.doTypes.get(sdoTypeId);
+  if (!sdoType) return;
+  for (const da of sdoType.das) {
+    if (!INTERESTING_FC.has(da.fc)) continue;
+    if (da.bType === 'Struct' && da.typeId) {
+      expandDa(doName, da.name, da.fc, sdoType.cdc, da.typeId, dt.daTypes, result, 0);
+    } else {
+      result.push({ doName, daName: da.name, fc: da.fc, cdc: sdoType.cdc });
+    }
+  }
+  for (const sdo of sdoType.sdos) {
+    expandSdo(`${doName}.${sdo.name}`, sdo.typeId, dt, result);
+  }
+}
+
 function resolveDoDas(lnTypeId: string, dt: ReturnType<typeof buildDtIndex>): ScdDoDa[] {
   const lnType = dt.lnTypes.get(lnTypeId);
   if (!lnType) return [];
@@ -134,6 +160,9 @@ function resolveDoDas(lnTypeId: string, dt: ReturnType<typeof buildDtIndex>): Sc
       } else {
         result.push({ doName: doRef.name, daName: da.name, fc: da.fc, cdc: doType.cdc });
       }
+    }
+    for (const sdo of doType.sdos) {
+      expandSdo(`${doRef.name}.${sdo.name}`, sdo.typeId, dt, result);
     }
   }
   return result;
@@ -207,6 +236,64 @@ export function parseScd(xmlText: string): ScdParseResult {
   if (ieds.length === 0) errors.push('Engin IED fannst í skránni.');
 
   return { ieds, errors };
+}
+
+// ─── DataSet extractor ────────────────────────────────────────────────────
+// Reads <DataSet><FCDA> elements directly from the ICD/IID file.
+// Returns one entry per FCDA, tagged with the DataSet name.
+
+export interface ScdDataSetFcda {
+  dataset: string;
+  ldInst: string;
+  prefix: string;
+  lnClass: string;
+  lnInst: string;
+  doName: string;
+  daName: string;
+  fc: string;
+}
+
+export function extractDataSets(xmlText: string, iedName?: string): ScdDataSetFcda[] {
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) return [];
+  } catch { return []; }
+
+  const result: ScdDataSetFcda[] = [];
+
+  // Find the target IED element
+  const all = Array.from(doc.querySelectorAll('IED'));
+  let target: Element | null = null;
+  if (iedName) target = all.find(el => el.getAttribute('name') === iedName) ?? null;
+  if (!target) {
+    // Fall back to IED with most LDevices
+    target = all.reduce<Element | null>((best, el) =>
+      !best || el.querySelectorAll('LDevice').length > best.querySelectorAll('LDevice').length ? el : best
+    , null);
+  }
+  if (!target) return [];
+
+  target.querySelectorAll('LDevice').forEach(ldEl => {
+    // DataSets live in LN0
+    ldEl.querySelectorAll('LN0 > DataSet').forEach(dsEl => {
+      const dataset = dsEl.getAttribute('name') ?? '';
+      dsEl.querySelectorAll('FCDA').forEach(fEl => {
+        result.push({
+          dataset,
+          ldInst: fEl.getAttribute('ldInst') ?? '',
+          prefix: fEl.getAttribute('prefix') ?? '',
+          lnClass: fEl.getAttribute('lnClass') ?? '',
+          lnInst: fEl.getAttribute('lnInst') ?? '',
+          doName: fEl.getAttribute('doName') ?? '',
+          daName: fEl.getAttribute('daName') ?? '',
+          fc: fEl.getAttribute('fc') ?? '',
+        });
+      });
+    });
+  });
+
+  return result;
 }
 
 // ─── Stats helper ─────────────────────────────────────────────────────────

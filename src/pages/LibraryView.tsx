@@ -4,11 +4,12 @@ import { useApi } from '../context/ApiContext';
 import { listProjects } from '../services/projectService';
 import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
 import { listEquipmentTemplates, loadEquipmentTemplate, saveEquipmentTemplate, type EquipmentTemplateFile } from '../services/equipmentTemplateService';
+import { listSignalUnits, saveSignalUnits } from '../services/signalUnitService';
 import { Button } from '../components/ui';
 import { EquipmentTemplateEditor } from '../components/EquipmentTemplateEditor';
-import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap } from '../types';
+import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap, SignalUnit, SignalCategory } from '../types';
 
-type LibTab = 'signals' | 'states' | 'templates';
+type LibTab = 'signals' | 'states' | 'units' | 'templates';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -26,6 +27,9 @@ function SignalsTab() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [bays, setBays] = useState<Bay[]>([]);
   const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterAlarm, setFilterAlarm] = useState('');
   const [lang, setLang] = useState<'is' | 'en'>('is');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<SignalLibraryEntry | null>(null);
@@ -39,13 +43,14 @@ function SignalsTab() {
   const [bulkEditing, setBulkEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [signalStates, setSignalStates] = useState<SignalState[]>([]);
+  const [signalUnits, setSignalUnits] = useState<SignalUnit[]>([]);
 
   const emptyNew = (): Partial<SignalLibraryEntry> => ({
     code: '', name_is: '', name_en: null, is_alarm: false, alarm_class: null,
     state_alarm_map: null, source_type: 'IED', iec61850_ln: null,
     iec61850_do: null, iec61850_da: null, iec61850_fc: null, iec61850_cdc: null,
     iec61850_dataset: null, description_is: null, state_id: null,
-    signal_type: null, units: null, severity_code: null,
+    signal_type: null, unit_id: null, severity_code: null,
     hmi_event: false, to_control_room: false, comments: null,
   });
   const [newOpen, setNewOpen] = useState(false);
@@ -60,8 +65,10 @@ function SignalsTab() {
       api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
       listProjects(api),
       api.readJson<SignalState[]>('data/signal_states.json'),
-    ]).then(([{ data: lib, sha }, projectList, { data: states }]) => {
+      listSignalUnits(api),
+    ]).then(([{ data: lib, sha }, projectList, { data: states }, { units }]) => {
       setSignalStates(states);
+      setSignalUnits(units);
       const needsMigration = lib.some(e => !e.id);
       if (needsMigration) {
         const migrated = lib.map(e => e.id ? e : { ...e, id: uuid() });
@@ -97,8 +104,8 @@ function SignalsTab() {
       description_is: form.description_is || null,
       state_id: form.state_id || null,
       state_alarm_map: stateMap,
-      signal_type: form.signal_type || null,
-      units: form.units || null,
+      signal_type: (form.signal_type as SignalCategory) || null,
+      unit_id: form.unit_id || null,
       severity_code: form.severity_code || null,
       hmi_event: form.hmi_event ?? false,
       is_alarm: effectiveIsAlarm,
@@ -160,6 +167,7 @@ function SignalsTab() {
     iec61850_fc: e.iec61850_fc ?? null,
     iec61850_cdc: e.iec61850_cdc ?? null,
     iec61850_dataset: e.iec61850_dataset ?? null,
+    unit_id: e.unit_id ?? null,
     is_alarm: e.is_alarm,
     alarm_class: e.alarm_class ?? null,
     state_alarm_map: e.state_alarm_map ?? null,
@@ -196,7 +204,7 @@ function SignalsTab() {
     try {
       let patch: Partial<SignalLibraryEntry> = {};
       if (bulkEditField === 'source_type') patch = { source_type: bulkEditValue as SourceType };
-      else if (bulkEditField === 'signal_type') patch = { signal_type: bulkEditValue || null };
+      else if (bulkEditField === 'signal_type') patch = { signal_type: (bulkEditValue as SignalCategory) || null };
       else if (bulkEditField === 'state_id') patch = { state_id: bulkEditValue || null };
       else if (bulkEditField === 'is_alarm') {
         const on = bulkEditValue === 'true';
@@ -212,13 +220,19 @@ function SignalsTab() {
   };
 
   const q = search.toLowerCase().trim();
-  const filtered = q
-    ? library.filter(e =>
-        (e.code?.toLowerCase().includes(q) ?? false) ||
-        e.name_is.toLowerCase().includes(q) ||
-        (e.name_en?.toLowerCase().includes(q) ?? false)
-      )
-    : library;
+  const filtered = library.filter(e => {
+    if (q && !(
+      (e.code?.toLowerCase().includes(q) ?? false) ||
+      e.name_is.toLowerCase().includes(q) ||
+      (e.name_en?.toLowerCase().includes(q) ?? false)
+    )) return false;
+    if (filterType && e.signal_type !== filterType) return false;
+    if (filterSource && e.source_type !== filterSource) return false;
+    if (filterAlarm === 'yes' && !e.is_alarm) return false;
+    if (filterAlarm === 'no' && e.is_alarm) return false;
+    return true;
+  });
+  const hasFilter = q || filterType || filterSource || filterAlarm;
 
   const toggleSelect = (code: string) => setSelected(prev => {
     const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n;
@@ -256,12 +270,28 @@ function SignalsTab() {
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
         <input
           type="search" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Leita að kóða eða heiti..."
-          style={{ flex: 1, maxWidth: '400px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '6px 10px', fontSize: '13px', outline: 'none' }}
+          style={{ flex: 1, minWidth: '200px', maxWidth: '360px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '6px 10px', fontSize: '13px', outline: 'none' }}
         />
+        {([
+          ['filterType', filterType, setFilterType, [['', '— Tegund —'], ['AI', 'AI'], ['DI', 'DI'], ['DO', 'DO'], ['AO', 'AO']]] ,
+          ['filterSource', filterSource, setFilterSource, [['', '— Uppspretta —'], ['IED', 'IED'], ['HARDWIRED', 'Harðvíraður']]],
+          ['filterAlarm', filterAlarm, setFilterAlarm, [['', '— Alarm —'], ['yes', 'Já'], ['no', 'Nei']]],
+        ] as [string, string, (v: string) => void, [string, string][]][]).map(([key, val, setter, opts]) => (
+          <select key={key} value={val} onChange={e => setter(e.target.value)}
+            style={{ background: val ? 'color-mix(in srgb, var(--accent) 12%, var(--surface-alt))' : 'var(--surface-alt)', border: `1px solid ${val ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 'var(--radius-sm)', color: val ? 'var(--accent)' : 'var(--text-secondary)', padding: '5px 8px', fontSize: '12px', outline: 'none', cursor: 'pointer', fontWeight: val ? 600 : 400 }}>
+            {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        ))}
+        {hasFilter && (
+          <button type="button" onClick={() => { setSearch(''); setFilterType(''); setFilterSource(''); setFilterAlarm(''); }}
+            style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px' }}>
+            ✕ Hreinsa
+          </button>
+        )}
         <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
           {(['is', 'en'] as const).map(l => (
             <button key={l} type="button" onClick={() => setLang(l)}
@@ -273,8 +303,9 @@ function SignalsTab() {
           ))}
         </div>
         <Button size="sm" onClick={() => { setNewOpen(true); setNewEntry(emptyNew()); }}>+ Nýtt merki</Button>
-        {search && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{filtered.length} niðurstöður</span>}
-        <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: 'auto' }}>{library.length} merki</span>
+        <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: 'auto' }}>
+          {hasFilter ? `${filtered.length} / ${library.length}` : `${library.length} merki`}
+        </span>
       </div>
 
       {/* Bulk toolbar */}
@@ -312,7 +343,7 @@ function SignalsTab() {
             <tbody>
               {filtered.length === 0 && (
                 <tr><td colSpan={15} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>
-                  {search ? 'Ekkert fannst' : 'Tómt safn'}
+                  {hasFilter ? 'Ekkert fannst' : 'Tómt safn'}
                 </td></tr>
               )}
               {filtered.map((e, i) => {
@@ -345,7 +376,12 @@ function SignalsTab() {
                         </div>
                       )) : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
                     </td>
-                    <td style={{ ...cell, fontSize: '11px', color: e.signal_type ? 'var(--text-secondary)' : 'var(--muted)' }}>{e.signal_type ?? '—'}</td>
+                    <td style={{ ...cell, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {e.signal_type
+                        ? <span style={{ background: e.signal_type === 'AI' || e.signal_type === 'AO' ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)', color: 'var(--text-secondary)', padding: '1px 5px', borderRadius: '3px', fontFamily: 'monospace' }}>{e.signal_type}</span>
+                        : <span style={{ color: 'var(--muted)' }}>—</span>}
+                      {e.unit_id && (() => { const u = signalUnits.find(u => u.id === e.unit_id); return u ? <span style={{ marginLeft: '4px', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '11px' }}>{u.abbreviation}</span> : null; })()}
+                    </td>
                     <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px' }}>
                       {stateRows.length > 0 ? stateRows.map(row => {
                         const cfg = e.state_alarm_map?.[row.k as '00'|'01'|'10'|'11'];
@@ -456,9 +492,13 @@ function SignalsTab() {
               </select>
             )}
             {bulkEditField === 'signal_type' && (
-              <input value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)}
-                placeholder="t.d. BINARY, ANALOG..."
-                style={{ ...modalInput, marginBottom: 'var(--space-4)' }} />
+              <select value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)} style={dropdownStyle}>
+                <option value="">— hreinsa —</option>
+                <option value="AI">AI — Analog Input (mæling)</option>
+                <option value="DI">DI — Digital Input (staða)</option>
+                <option value="DO">DO — Digital Output (stjórn)</option>
+                <option value="AO">AO — Analog Output (settpunkt)</option>
+              </select>
             )}
             {bulkEditField === 'state_id' && (
               <select value={bulkEditValue} onChange={e => setBulkEditValue(e.target.value)} style={dropdownStyle}>
@@ -516,6 +556,38 @@ function SignalsTab() {
                 </div>
               ))}
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Tegund merkis</label>
+                  <select
+                    value={form.signal_type ?? ''}
+                    onChange={e => setForm(prev => ({ ...prev, signal_type: (e.target.value as SignalCategory) || null, unit_id: (e.target.value === 'AI' || e.target.value === 'AO') ? prev.unit_id : null }))}
+                    style={{ ...modalInput, cursor: 'pointer' }}
+                  >
+                    <option value="">— óþekkt —</option>
+                    <option value="AI">AI — Analog Input</option>
+                    <option value="DI">DI — Digital Input</option>
+                    <option value="DO">DO — Digital Output</option>
+                    <option value="AO">AO — Analog Output</option>
+                  </select>
+                </div>
+                {(form.signal_type === 'AI' || form.signal_type === 'AO') && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Eining</label>
+                    <select
+                      value={form.unit_id ?? ''}
+                      onChange={e => setForm(prev => ({ ...prev, unit_id: e.target.value || null }))}
+                      style={{ ...modalInput, cursor: 'pointer' }}
+                    >
+                      <option value="">— engin eining —</option>
+                      {signalUnits.map(u => (
+                        <option key={u.id} value={u.id}>{u.abbreviation} — {u.name_is}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div style={{ marginBottom: 'var(--space-3)' }}>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Stöður</label>
                 <select
@@ -530,7 +602,7 @@ function SignalsTab() {
                       .filter(Boolean).slice(0, 2).join(' / ');
                     return (
                       <option key={s.id} value={s.id}>
-                        {s.type ?? s.id}{preview ? ` — ${preview}` : ''}
+                        {s.type ? `${s.type} (${s.id})` : s.id}{preview ? ` — ${preview}` : ''}
                       </option>
                     );
                   })}
@@ -640,6 +712,7 @@ function StatesTab() {
   const [saving, setSaving] = useState(false);
   const [idError, setIdError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const ORDER = ['00', '01', '10', '11'] as const;
 
@@ -711,6 +784,19 @@ function StatesTab() {
   const head: React.CSSProperties = { ...cell, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--surface-alt)', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1 };
   const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: '12px', outline: 'none' };
 
+  const q = search.toLowerCase().trim();
+  const filtered = q
+    ? states.filter(s =>
+        s.id.toLowerCase().includes(q) ||
+        (s.type?.toLowerCase().includes(q) ?? false) ||
+        Object.values(s.states).some(e =>
+          (e?.key?.toLowerCase().includes(q) ?? false) ||
+          (e?.is?.toLowerCase().includes(q) ?? false) ||
+          (e?.en?.toLowerCase().includes(q) ?? false)
+        )
+      )
+    : states;
+
   if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
 
   return (
@@ -718,7 +804,14 @@ function StatesTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <Button size="sm" onClick={openNew}>+ Nýr stöðuflokkur</Button>
-          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{states.length} flokkar</span>
+          <input
+            type="search" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Leita að ID, tegund eða stöðutexta..."
+            style={{ width: '280px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 10px', fontSize: '13px', outline: 'none' }}
+          />
+          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+            {search ? `${filtered.length} / ${states.length}` : `${states.length} flokkar`}
+          </span>
         </div>
         <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
           {(['is', 'en'] as const).map(l => (
@@ -739,10 +832,10 @@ function StatesTab() {
               </tr>
             </thead>
             <tbody>
-              {states.length === 0 && (
-                <tr><td colSpan={7} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engir stöðuflokkar</td></tr>
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>{search ? 'Ekkert fannst' : 'Engir stöðuflokkar'}</td></tr>
               )}
-              {states.map((s, i) => (
+              {filtered.map((s, i) => (
                 <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
                   <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>{s.id}</td>
                   <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>{s.type ?? '—'}</td>
@@ -847,6 +940,136 @@ function StatesTab() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
               <Button variant="ghost" onClick={() => setModalOpen(false)}>Hætta við</Button>
               <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Vista...' : editingId === null ? 'Vista' : 'Vista breytingar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnitsTab() {
+  const { api } = useApi();
+  const [units, setUnits] = useState<SignalUnit[]>([]);
+  const [unitsSha, setUnitsSha] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  type UnitForm = { abbreviation: string; name_is: string; name_en: string };
+  const emptyForm = (): UnitForm => ({ abbreviation: '', name_is: '', name_en: '' });
+  const [form, setForm] = useState<UnitForm>(emptyForm());
+
+  useEffect(() => {
+    listSignalUnits(api)
+      .then(({ units: u, sha }) => { setUnits(u); setUnitsSha(sha); })
+      .finally(() => setLoading(false));
+  }, [api]);
+
+  const openNew = () => { setForm(emptyForm()); setEditingId(null); setModalOpen(true); };
+  const openEdit = (u: SignalUnit) => {
+    setForm({ abbreviation: u.abbreviation, name_is: u.name_is, name_en: u.name_en ?? '' });
+    setEditingId(u.id); setModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.abbreviation.trim() || !form.name_is.trim()) return;
+    setSaving(true);
+    try {
+      const built: SignalUnit = {
+        id: editingId ?? uuid(),
+        abbreviation: form.abbreviation.trim(),
+        name_is: form.name_is.trim(),
+        name_en: form.name_en.trim() || null,
+      };
+      const newUnits = editingId === null ? [...units, built] : units.map(u => u.id === editingId ? built : u);
+      const newSha = await saveSignalUnits(api, newUnits, unitsSha, editingId ? `Uppfæra einingu: ${built.abbreviation}` : `Ný eining: ${built.abbreviation}`);
+      setUnits(newUnits); setUnitsSha(newSha); setModalOpen(false);
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    const newUnits = units.filter(u => u.id !== id);
+    const newSha = await saveSignalUnits(api, newUnits, unitsSha, `Eyða einingu: ${units.find(u => u.id === id)?.abbreviation ?? id}`);
+    setUnits(newUnits); setUnitsSha(newSha); setDeletingId(null);
+  };
+
+  const cell: React.CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--line-muted)', fontSize: '13px', verticalAlign: 'middle' };
+  const head: React.CSSProperties = { ...cell, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--surface-alt)', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1 };
+  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '6px 8px', fontSize: '13px', outline: 'none' };
+
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+        <Button size="sm" onClick={openNew}>+ Ný eining</Button>
+        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{units.length} einingar</span>
+      </div>
+
+      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', maxWidth: '600px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {['Skammstöfun', 'Heiti (IS)', 'Heiti (EN)', ''].map(h => <th key={h} style={head}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {units.length === 0 && (
+              <tr><td colSpan={4} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engar einingar skráðar</td></tr>
+            )}
+            {units.map((u, i) => (
+              <tr key={u.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>{u.abbreviation}</td>
+                <td style={cell}>{u.name_is}</td>
+                <td style={{ ...cell, color: u.name_en ? 'var(--text)' : 'var(--muted)' }}>{u.name_en ?? '—'}</td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                  {deletingId === u.id ? (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--danger)' }}>Eyða?</span>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(u.id)}>Já</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDeletingId(null)}>Nei</Button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>✏</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDeletingId(u.id)}>🗑</Button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false); }}>
+          <div style={{ background: 'var(--bg)', borderRadius: 'var(--radius)', padding: 'var(--space-6)', width: '360px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: 'var(--space-4)' }}>
+              {editingId === null ? 'Ný eining' : `Breyta — ${units.find(u => u.id === editingId)?.abbreviation}`}
+            </div>
+
+            {([['Skammstöfun *', 'abbreviation', 'monospace'], ['Heiti (IS) *', 'name_is', 'inherit'], ['Heiti (EN)', 'name_en', 'inherit']] as [string, keyof UnitForm, string][]).map(([label, field, ff]) => (
+              <div key={field} style={{ marginBottom: 'var(--space-3)' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{label}</label>
+                <input
+                  value={form[field]}
+                  onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))}
+                  style={{ ...inp, fontFamily: ff }}
+                  placeholder={field === 'abbreviation' ? 't.d. kV, MW, A' : ''}
+                />
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+              <Button variant="ghost" onClick={() => setModalOpen(false)}>Hætta við</Button>
+              <Button onClick={handleSave} disabled={!form.abbreviation.trim() || !form.name_is.trim() || saving}>
                 {saving ? 'Vista...' : editingId === null ? 'Vista' : 'Vista breytingar'}
               </Button>
             </div>
@@ -1032,11 +1255,13 @@ export function LibraryView() {
       <div style={{ display: 'flex', gap: 'var(--space-1)', borderBottom: '1px solid var(--line)', marginBottom: 'var(--space-6)' }}>
         <button type="button" style={tabStyle('signals')} onClick={() => setTab('signals')}>Merkjasafn</button>
         <button type="button" style={tabStyle('states')} onClick={() => setTab('states')}>Stöður</button>
+        <button type="button" style={tabStyle('units')} onClick={() => setTab('units')}>Einingar</button>
         <button type="button" style={tabStyle('templates')} onClick={() => setTab('templates')}>Sniðmát</button>
       </div>
 
       {tab === 'signals' && <SignalsTab />}
       {tab === 'states' && <StatesTab />}
+      {tab === 'units' && <UnitsTab />}
       {tab === 'templates' && <TemplatesTab />}
     </div>
   );

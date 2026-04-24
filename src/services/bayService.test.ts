@@ -37,7 +37,7 @@ describe('listBays', () => {
     const bayId = '550e8400-e29b-41d4-a716-446655440001';
     mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
     mockApi.readJson.mockResolvedValue({
-      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', equipment_ids: [], signals: [], status: 'DRAFT', review: null } as Bay,
+      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', description: null, equipment_ids: [], signals: [], status: 'DRAFT', review: null } as Bay,
       sha: 'sha1',
     });
 
@@ -52,7 +52,7 @@ describe('renameStation', () => {
     const bayId = '550e8400-e29b-41d4-a716-446655440002';
     mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
     mockApi.readJson.mockResolvedValue({
-      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', equipment_ids: [], signals: [], status: 'DRAFT', review: null } as Bay,
+      data: { id: bayId, voltage_level: 'J', bay_name: 'E00', display_id: '55E00', description: null, equipment_ids: [], signals: [], status: 'DRAFT', review: null } as Bay,
       sha: 'sha-old',
     });
     mockApi.writeJson.mockResolvedValue('sha-new');

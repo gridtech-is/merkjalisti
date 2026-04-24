@@ -97,6 +97,7 @@ function parseRow(raw: Record<string, unknown>, phase: ProjectPhase, libraryInde
     iec61850_cdc: str(mapped.iec61850_cdc),
     iec61850_dataset: str(mapped.iec61850_dataset),
     library_id: libraryIndex?.get(str(mapped.signal_name) ?? '')?.id ?? null,
+    unit_id: null,
     is_alarm: parseBool(mapped.is_alarm),
     alarm_class: alarmClass,
     state_alarm_map: null,

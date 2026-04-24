@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { createBay, listBayTemplates } from '../services/bayService';
+import { createBay, listBayTemplates, listBays } from '../services/bayService';
 import { Card, Button, Input, Select } from '../components/ui';
-import type { BaySignal, BayTemplate, Project } from '../types';
+import type { Bay, BaySignal, BayTemplate, Project } from '../types';
+
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 
 export function NewBay() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -14,6 +21,8 @@ export function NewBay() {
   const [bayName, setBayName] = useState('');
   const [templates, setTemplates] = useState<BayTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [sourceBays, setSourceBays] = useState<Bay[]>([]);
+  const [copyBayId, setCopyBayId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,6 +32,9 @@ export function NewBay() {
       .then(({ data }) => setStationNumber(data.station_number))
       .catch(() => setError('Gat ekki sótt stöðvarnúmer verkefnis.'));
     listBayTemplates(api).then(setTemplates).catch(() => {});
+    listBays(api, projectId)
+      .then(bays => setSourceBays(bays.sort((a, b) => a.display_id.localeCompare(b.display_id, 'is'))))
+      .catch(() => {});
   }, [api, projectId]);
 
   const handleCreate = async () => {
@@ -31,7 +43,18 @@ export function NewBay() {
     setError('');
     try {
       let signals: BaySignal[] = [];
-      if (selectedTemplate) {
+      if (copyBayId) {
+        const src = sourceBays.find(b => b.id === copyBayId);
+        if (src) {
+          signals = src.signals.map(s => ({
+            ...s,
+            id: uuid(),
+            phase_added: 'DESIGN' as const,
+            review_flagged: false,
+            review_comment: null,
+          }));
+        }
+      } else if (selectedTemplate) {
         const tmpl = templates.find(t => t.template_name === selectedTemplate);
         if (tmpl) {
           signals = tmpl.signals.map(s => ({
@@ -90,9 +113,9 @@ export function NewBay() {
           )}
 
           <Select
-            label="Sniðmát (valkvæmt)"
+            label="Bay sniðmát (valkvæmt)"
             value={selectedTemplate}
-            onChange={setSelectedTemplate}
+            onChange={v => { setSelectedTemplate(v); if (v) setCopyBayId(''); }}
             options={[
               { value: '', label: '— Engin sniðmát —' },
               ...templates.map(t => ({ value: t.template_name, label: t.template_name })),
@@ -102,6 +125,24 @@ export function NewBay() {
           {selectedTemplate && (
             <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
               {templates.find(t => t.template_name === selectedTemplate)?.signals.length ?? 0} merki verða flutt inn
+            </div>
+          )}
+
+          {sourceBays.length > 0 && (
+            <Select
+              label="Eða afrita merki úr reit"
+              value={copyBayId}
+              onChange={v => { setCopyBayId(v); if (v) setSelectedTemplate(''); }}
+              options={[
+                { value: '', label: '— Ekki afrita —' },
+                ...sourceBays.map(b => ({ value: b.id, label: `${b.display_id} (${b.signals.length} merki)` })),
+              ]}
+            />
+          )}
+
+          {copyBayId && (
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              {sourceBays.find(b => b.id === copyBayId)?.signals.length ?? 0} merki verða afrituð með nýjum auðkennum
             </div>
           )}
 

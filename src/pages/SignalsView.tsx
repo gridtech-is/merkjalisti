@@ -40,7 +40,7 @@ export function SignalsView() {
     source_type: 'IED', iec61850_ln: null,
     iec61850_do: null, iec61850_da: null, iec61850_fc: null, iec61850_cdc: null,
     iec61850_dataset: null, description_is: null, state_id: null,
-    signal_type: null, units: null, severity_code: null,
+    signal_type: null, unit_id: null, severity_code: null,
     hmi_event: false, to_control_room: false, comments: null,
   });
   const [newEntry, setNewEntry] = useState<Partial<SignalLibraryEntry>>(emptyNew());
@@ -75,7 +75,7 @@ export function SignalsView() {
     description_is: form.description_is || null,
     state_id: form.state_id || null,
     signal_type: form.signal_type || null,
-    units: form.units || null,
+    unit_id: form.unit_id || null,
     severity_code: form.severity_code || null,
     hmi_event: form.hmi_event ?? false,
     is_alarm: form.is_alarm ?? false,
@@ -170,6 +170,7 @@ export function SignalsView() {
     iec61850_fc: e.iec61850_fc ?? null,
     iec61850_cdc: e.iec61850_cdc ?? null,
     iec61850_dataset: e.iec61850_dataset ?? null,
+    unit_id: e.unit_id ?? null,
     is_alarm: e.is_alarm,
     alarm_class: e.alarm_class ?? null,
     state_alarm_map: null,

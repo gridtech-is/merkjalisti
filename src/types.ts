@@ -1,5 +1,14 @@
 // src/types.ts
 
+// ─── Signal units ──────────────────────────────────────────────────────────
+
+export interface SignalUnit {
+  id: string;
+  abbreviation: string;   // "A", "kV", "MW", "Mvar", "Hz", "°C"
+  name_is: string;        // "Amper", "kílóvolt"
+  name_en: string | null;
+}
+
 // ─── Signal states (Sinalmatrix) ───────────────────────────────────────────
 
 export interface SignalStateEntry {
@@ -18,6 +27,7 @@ export interface SignalState {
 
 export type AlarmClass = 1 | 2 | 3;
 export type SourceType = 'IED' | 'HARDWIRED';
+export type SignalCategory = 'AI' | 'DI' | 'DO' | 'AO';
 
 export interface SignalLibraryEntry {
   id: string;           // stable UUID — never changes
@@ -26,8 +36,8 @@ export interface SignalLibraryEntry {
   description_is: string | null;
   name_en: string | null;
   state_id: string | null;
-  signal_type: string | null;
-  units: string | null;
+  signal_type: SignalCategory | null;
+  unit_id: string | null;
   severity_code: string | null;
   hmi_event: boolean;
   is_alarm: boolean;
@@ -155,6 +165,7 @@ export interface BaySignal {
   iec61850_cdc: string | null;         // Common Data Class
   iec61850_dataset: string | null;     // Dataset
   library_id: string | null;     // references SignalLibraryEntry.id
+  unit_id: string | null;        // references SignalUnit.id
   is_alarm: boolean;
   alarm_class: AlarmClass | null;
   state_alarm_map: StateAlarmMap | null;
@@ -184,11 +195,12 @@ export interface IedFcda {
   daName: string;
   fc: string;
   cdc: string;
+  dataset?: string;  // DataSet name from ICD (if present)
 }
 
 // ─── Bay review ────────────────────────────────────────────────────────────
 
-export type BayStatus = 'DRAFT' | 'IN_REVIEW' | 'LOCKED';
+export type BayStatus = 'DRAFT' | 'IN_REVIEW' | 'LOCKED' | 'DELETED';
 
 export interface BayReview {
   sent_by: string;
@@ -206,6 +218,7 @@ export interface Bay {
   voltage_level: string;
   bay_name: string;
   display_id: string;
+  description: string | null;
   equipment_ids: string[];
   signals: BaySignal[];
   status: BayStatus;

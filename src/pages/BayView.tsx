@@ -40,6 +40,9 @@ export function BayView() {
   const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
   const [signalTemplates, setSignalTemplates] = useState<EquipmentTemplate[]>([]);
   const [applyTemplateIed, setApplyTemplateIed] = useState<Equipment | null>(null);
+  const [renamingBay, setRenamingBay] = useState(false);
+  const [descDraft, setDescDraft] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -306,6 +309,18 @@ export function BayView() {
 
   useAutoCommit(isDirty, commitChanges);
 
+  const handleSaveRename = async () => {
+    if (!bayFile || !projectId) return;
+    const newDesc = descDraft.trim() || null;
+    setRenameSaving(true);
+    try {
+      const updated: Bay = { ...bayFile.bay, description: newDesc };
+      const saved = await saveBay(api, projectId, { bay: updated, sha: bayFile.sha }, bayFile.bay.status === 'DRAFT' ? 'DRAFT' : 'DESIGN');
+      setBayFile(saved);
+      setRenamingBay(false);
+    } finally { setRenameSaving(false); }
+  };
+
   const handleSaveTemplate = async () => {
     if (!bayFile) return;
     const name = prompt('Nafn á sniðmáti:', bayFile.bay.display_id);
@@ -389,8 +404,15 @@ export function BayView() {
         marginBottom: 'var(--space-6)',
       }}>
         <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{bay.display_id}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{bay.display_id}</h1>
+            <button type="button"
+              onClick={() => { setDescDraft(bay.description ?? ''); setRenamingBay(true); }}
+              title="Lýsing"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '13px', padding: '2px 4px', lineHeight: 1 }}>✏</button>
+          </div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+            {bay.description && <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{bay.description}</span>}
             {stationNumber} / {bay.voltage_level} / {bay.bay_name} — {bay.signals.length} merki
           </div>
         </div>
@@ -560,6 +582,33 @@ export function BayView() {
           }}
           onClose={() => setApplyTemplateIed(null)}
         />
+      )}
+
+      {renamingBay && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setRenamingBay(false); }}>
+          <div style={{ background: 'var(--bg)', borderRadius: 'var(--radius)', padding: 'var(--space-6)', width: '360px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: 'var(--space-2)' }}>Lýsing á reit</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: 'var(--space-4)', fontFamily: 'monospace' }}>{bay.display_id}</div>
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Lýsing (valkvæmt)</label>
+              <input
+                autoFocus
+                value={descDraft}
+                onChange={e => setDescDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setRenamingBay(false); }}
+                placeholder="t.d. Meginspennir 1"
+                style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '6px 8px', fontSize: '13px', outline: 'none' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+              <Button variant="ghost" onClick={() => setRenamingBay(false)}>Hætta við</Button>
+              <Button onClick={handleSaveRename} disabled={renameSaving}>
+                {renameSaving ? 'Vista...' : 'Vista'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
