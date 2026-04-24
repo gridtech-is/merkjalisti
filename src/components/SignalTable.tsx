@@ -19,7 +19,7 @@ function suggestDataset(lnClass: string | null, fc: string | null, cdc?: string 
 }
 
 function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; patch: Partial<BaySignal> }[] {
-  const toAssign = allSignals.filter(s => !s.iec61850_dataset && s.source_type === 'IED');
+  const toAssign = allSignals.filter(s => !s.iec61850_dataset);
   const baseTotal = new Map<string, number>();
   for (const sig of toAssign) {
     const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc, sig.iec61850_cdc) ?? 'Ev';
@@ -117,6 +117,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [filterEq, setFilterEq] = useState('');
   const [filterText, setFilterText] = useState('');
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
+  const [datasetPreview, setDatasetPreview] = useState<{ id: string; patch: Partial<BaySignal>; signalName: string; current: string }[] | null>(null);
   const [flagComment, setFlagComment] = useState('');
   const [popupId, setPopupId] = useState<string | null>(null);
   const [fcdaPickerId, setFcdaPickerId] = useState<string | null>(null);
@@ -302,7 +303,11 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             type="button"
             onClick={() => {
               const patches = fillDatasets(signals, maxDatasetSize);
-              if (patches.length > 0) onBatchUpdate(patches);
+              const preview = patches.map(p => {
+                const sig = signals.find(s => s.id === p.id)!;
+                return { ...p, signalName: sig.signal_name, current: sig.iec61850_dataset ?? '—' };
+              });
+              setDatasetPreview(preview);
             }}
             style={{
               marginLeft: 'auto', fontSize: '12px', padding: '4px 10px',
@@ -1068,6 +1073,51 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           </tbody>
         </table>
       </div>
+
+      {datasetPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', width: '520px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Fylla Dataset / RCB</h3>
+              <button type="button" onClick={() => setDatasetPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+            {datasetPreview.length === 0 ? (
+              <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Öll merki eru þegar með Dataset — ekkert að fylla.</p>
+            ) : (
+              <>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{datasetPreview.length} merki fá Dataset og RCB:</p>
+                <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr>
+                        {['Merki', 'Dataset', 'RCB'].map(h => (
+                          <th key={h} style={{ padding: '5px 10px', background: 'var(--surface-alt)', borderBottom: '1px solid var(--line)', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {datasetPreview.map(p => (
+                        <tr key={p.id}>
+                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', fontFamily: 'monospace' }}>{p.signalName}</td>
+                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', color: 'var(--accent)', fontFamily: 'monospace' }}>{p.patch.iec61850_dataset as string}</td>
+                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', color: 'var(--muted)', fontFamily: 'monospace' }}>{p.patch.iec61850_rcb as string}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                  <button type="button" onClick={() => setDatasetPreview(null)} style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text)' }}>Hætta við</button>
+                  <button type="button" onClick={() => { onBatchUpdate!(datasetPreview.map(p => ({ id: p.id, patch: p.patch }))); setDatasetPreview(null); }}
+                    style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+                    Beita ({datasetPreview.length})
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
