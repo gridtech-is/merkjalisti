@@ -1,12 +1,12 @@
 // src/components/OverviewTab.tsx
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { listBays, loadBay } from '../services/bayService';
 import { loadStation } from '../services/stationService';
 import { exportAllBaysToExcel } from '../services/exportService';
 import { Button } from './ui';
-import type { Bay, BaySignal, ProjectPhase } from '../types';
+import type { Bay, BaySignal, ProjectPhase, SignalState } from '../types';
 
 interface Props {
   projectId: string;
@@ -43,6 +43,8 @@ const head: React.CSSProperties = {
   zIndex: 1,
 };
 
+const ORDER = ['00', '01', '10', '11'] as const;
+
 function buildRef(sig: BaySignal): string {
   const ied = sig.iec61850_ied ?? '';
   const ld = sig.iec61850_ld ?? '';
@@ -58,16 +60,16 @@ function buildRef(sig: BaySignal): string {
   return ied ? `${ied}${ref}` : ref;
 }
 
-import React from 'react';
-
 export function OverviewTab({ projectId, projectName }: Props) {
   const { api } = useApi();
   const navigate = useNavigate();
 
   const [bays, setBays] = useState<Bay[]>([]);
   const [stationSignals, setStationSignals] = useState<BaySignal[]>([]);
+  const [states, setStates] = useState<SignalState[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
 
   const [search, setSearch] = useState('');
   const [selectedBays, setSelectedBays] = useState<Set<string>>(new Set());
@@ -83,12 +85,20 @@ export function OverviewTab({ projectId, projectName }: Props) {
         return full;
       }),
       loadStation(api, projectId),
-    ]).then(([fullBays, stationFile]) => {
+      api.readJson<SignalState[]>('data/signal_states.json'),
+    ]).then(([fullBays, stationFile, { data: stateData }]) => {
       setBays(fullBays);
       setStationSignals(stationFile.station.signals);
+      setStates(stateData);
     }).catch(() => setError('Gat ekki hlaðið gögnum. Reyndu aftur.'))
       .finally(() => setLoading(false));
   }, [api, projectId]);
+
+  const stateIndex = useMemo(() => {
+    const m = new Map<string, SignalState>();
+    for (const s of states) m.set(s.id, s);
+    return m;
+  }, [states]);
 
   const rows: Row[] = useMemo(() => {
     const bayRows: Row[] = bays.flatMap(bay =>
@@ -152,7 +162,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
     padding: '5px 8px', fontSize: '12px', outline: 'none',
   };
 
-  const bayKeys: { key: string; label: string }[] = [
+  const bayKeys = [
     ...bays.map(b => ({ key: b.id, label: b.display_id })),
     { key: 'station', label: 'Stöð' },
   ];
@@ -204,8 +214,19 @@ export function OverviewTab({ projectId, projectName }: Props) {
         )}
       </div>
 
-      {/* Filter row 2 */}
+      {/* Filter row 2 + IS/EN toggle */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* IS/EN toggle */}
+        <div style={{ display: 'flex', gap: '2px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
+          {(['is', 'en'] as const).map(lang => (
+            <button key={lang} type="button" onClick={() => setStateLang(lang)}
+              style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 600, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                background: stateLang === lang ? 'var(--accent)' : 'transparent',
+                color: stateLang === lang ? '#fff' : 'var(--text-secondary)' }}>
+              {lang.toUpperCase()}
+            </button>
+          ))}
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', cursor: 'pointer' }}>
           <input type="checkbox" checked={alarmOnly} onChange={e => setAlarmOnly(e.target.checked)} />
           Bara alarm
@@ -224,7 +245,6 @@ export function OverviewTab({ projectId, projectName }: Props) {
       <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'auto', maxHeight: '70vh' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            {/* Row 1 — group headers */}
             <tr>
               <th rowSpan={2} style={{ ...head, whiteSpace: 'nowrap' }}>Reit</th>
               {(['#', 'Tæki', 'Merki', 'Kóði', 'Texti'] as string[]).map(h => (
@@ -241,21 +261,16 @@ export function OverviewTab({ projectId, projectName }: Props) {
               <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--success)', color: 'var(--success)', textAlign: 'center' }}>FAT</th>
               <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--warning)', color: 'var(--warning)', textAlign: 'center' }}>SAT</th>
             </tr>
-            {/* Row 2 — sub-headers */}
             <tr>
-              {/* Stöður */}
               {(['Staða', 'Tegund'] as string[]).map((h, i) => (
                 <th key={`st-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
               ))}
-              {/* IEC 61850 */}
               {(['IED', 'ldInst', 'Prefix', 'lnClass', 'lnInst', 'doName', 'daName', 'FC', 'CDC', 'Dataset', 'RCB', 'DSE', 'Ref.'] as string[]).map((h, i) => (
                 <th key={`ie-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--accent)' : undefined }}>{h}</th>
               ))}
-              {/* FAT */}
               {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
                 <th key={`fat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--success)' : undefined }}>{h}</th>
               ))}
-              {/* SAT */}
               {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
                 <th key={`sat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--warning)' : undefined }}>{h}</th>
               ))}
@@ -267,9 +282,29 @@ export function OverviewTab({ projectId, projectName }: Props) {
             )}
             {filtered.map((r, i) => {
               const sig = r.signal;
+              const st = sig.state_id ? stateIndex.get(sig.state_id) : undefined;
+              const map = sig.state_alarm_map ?? {};
               const fatColor = sig.fat_result === 'PASS' ? 'var(--success)' : sig.fat_result === 'FAIL' ? 'var(--danger)' : 'var(--muted)';
               const satColor = sig.sat_result === 'PASS' ? 'var(--success)' : sig.sat_result === 'FAIL' ? 'var(--danger)' : 'var(--muted)';
               const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: '11px' };
+
+              // State rows (00/01/10/11)
+              const stateRows = st
+                ? ORDER.map(k => {
+                    const entry = st.states[k];
+                    if (!entry) return null;
+                    return { k, text: (stateLang === 'is' ? entry.is : entry.en) ?? k };
+                  }).filter(Boolean)
+                : [];
+
+              // Alarm rows per state
+              const alarmRows = st
+                ? ORDER.map(k => {
+                    if (!st.states[k]) return null;
+                    const cfg = map[k] ?? { is_alarm: false, alarm_class: null };
+                    return { k, cfg };
+                  }).filter(Boolean)
+                : [];
 
               return (
                 <tr key={sig.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
@@ -285,43 +320,80 @@ export function OverviewTab({ projectId, projectName }: Props) {
                       <span style={{ color: 'var(--text-secondary)' }}>Stöð</span>
                     )}
                   </td>
-                  {/* # */}
                   <td style={{ ...cell, color: 'var(--muted)', fontSize: '11px', width: '28px' }}>{i + 1}</td>
-                  {/* Tæki */}
                   <td style={{ ...cell, ...mono, color: 'var(--accent)', minWidth: '60px' }}>{sig.equipment_code}</td>
-                  {/* Merki */}
                   <td style={{ ...cell, ...mono, color: 'var(--accent)', minWidth: '110px' }}>{sig.signal_name}</td>
-                  {/* Kóði (library code — same field in overview) */}
+                  {/* Kóði */}
                   <td style={{ ...cell, ...mono, minWidth: '90px', color: 'var(--text-secondary)' }}>{sig.signal_name}</td>
-                  {/* Texti */}
-                  <td style={{ ...cell, minWidth: '140px' }}>{sig.name_is}</td>
-
-                  {/* Stöður — Staða / Tegund */}
-                  <td style={{ ...cell, borderLeft: '2px solid var(--line)', fontSize: '11px', color: 'var(--text-secondary)', minWidth: '80px' }}>
-                    {sig.state_id ?? '—'}
+                  {/* Texti — IS eða EN */}
+                  <td style={{ ...cell, minWidth: '140px' }}>
+                    {stateLang === 'is' ? sig.name_is : (sig.name_en || sig.name_is)}
                   </td>
-                  <td style={{ ...cell, ...mono, fontSize: '10px', color: 'var(--muted)' }}>—</td>
+
+                  {/* Stöður — Staða */}
+                  <td style={{ ...cell, borderLeft: '2px solid var(--line)', minWidth: '160px', verticalAlign: 'top', padding: '4px 6px' }}>
+                    {stateRows.length > 0 ? stateRows.map(row => {
+                      if (!row) return null;
+                      return (
+                        <div key={row.k} style={{ display: 'flex', gap: '6px', marginBottom: '2px', fontSize: '11px' }}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--muted)', minWidth: '22px' }}>{row.k}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{row.text}</span>
+                        </div>
+                      );
+                    }) : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
+                  </td>
+                  {/* Tegund */}
+                  <td style={{ ...cell, ...mono, fontSize: '11px', color: 'var(--muted)' }}>{st?.type ?? '—'}</td>
 
                   {/* Alarm */}
-                  <td style={{ ...cell, textAlign: 'center' }}>{sig.is_alarm ? '✓' : '—'}</td>
+                  <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px' }}>
+                    {alarmRows.length > 0 ? alarmRows.map(row => {
+                      if (!row) return null;
+                      return (
+                        <div key={row.k} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', height: '18px' }}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '10px', minWidth: '22px' }}>{row.k}</span>
+                          <span style={{ color: row.cfg.is_alarm ? 'var(--danger)' : 'var(--muted)', fontSize: '11px' }}>
+                            {row.cfg.is_alarm ? '✓' : '—'}
+                          </span>
+                        </div>
+                      );
+                    }) : (
+                      <span style={{ fontSize: '11px' }}>{sig.is_alarm ? '✓' : '—'}</span>
+                    )}
+                  </td>
                   {/* Fl. (alarm class) */}
-                  <td style={{ ...cell, textAlign: 'center', fontSize: '11px' }}>{sig.alarm_class ? `F${sig.alarm_class}` : '—'}</td>
+                  <td style={{ ...cell, verticalAlign: 'top', padding: '4px 6px', minWidth: '40px' }}>
+                    {alarmRows.length > 0 ? alarmRows.map(row => {
+                      if (!row) return null;
+                      return (
+                        <div key={row.k} style={{ height: '18px', marginBottom: '2px', display: 'flex', alignItems: 'center', fontSize: '10px' }}>
+                          {row.cfg.is_alarm && row.cfg.alarm_class
+                            ? <span style={{ color: 'var(--text-secondary)' }}>F{row.cfg.alarm_class}</span>
+                            : <span style={{ color: 'var(--muted)' }}>—</span>}
+                        </div>
+                      );
+                    }) : (
+                      <span style={{ fontSize: '11px' }}>
+                        {sig.is_alarm && sig.alarm_class ? `F${sig.alarm_class}` : '—'}
+                      </span>
+                    )}
+                  </td>
                   {/* Uppruni */}
                   <td style={{ ...cell, fontSize: '11px' }}>{sig.source_type}</td>
 
                   {/* IEC 61850 */}
-                  <td style={{ ...cell, borderLeft: '2px solid var(--accent)', ...mono, fontSize: '11px', color: 'var(--accent)', minWidth: '70px' }}>{sig.iec61850_ied ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_ld ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_ln_prefix ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '60px' }}>{sig.iec61850_ln ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_ln_inst ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_do ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_da ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '35px' }}>{sig.iec61850_fc ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', color: 'var(--muted)', minWidth: '40px' }}>{sig.iec61850_cdc ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_dataset ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_rcb ?? '—'}</td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_dataset_entry ?? '—'}</td>
+                  <td style={{ ...cell, borderLeft: '2px solid var(--accent)', ...mono, color: 'var(--accent)', minWidth: '70px' }}>{sig.iec61850_ied ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '55px' }}>{sig.iec61850_ld ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '45px' }}>{sig.iec61850_ln_prefix ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '60px' }}>{sig.iec61850_ln ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '45px' }}>{sig.iec61850_ln_inst ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '55px' }}>{sig.iec61850_do ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '55px' }}>{sig.iec61850_da ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '35px' }}>{sig.iec61850_fc ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, color: 'var(--muted)', minWidth: '40px' }}>{sig.iec61850_cdc ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '55px' }}>{sig.iec61850_dataset ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '55px' }}>{sig.iec61850_rcb ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, minWidth: '45px' }}>{sig.iec61850_dataset_entry ?? '—'}</td>
                   <td style={{ ...cell, ...mono, fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '120px' }}>{buildRef(sig)}</td>
 
                   {/* Fasi */}
@@ -331,23 +403,15 @@ export function OverviewTab({ projectId, projectName }: Props) {
                   <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--success)' }}>
                     {sig.fat_tested ? <span style={{ color: 'var(--success)' }}>✓</span> : '—'}
                   </td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', color: fatColor, minWidth: '60px' }}>
-                    {sig.fat_result ?? '—'}
-                  </td>
-                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>
-                    {sig.fat_tested_by ?? '—'}
-                  </td>
+                  <td style={{ ...cell, ...mono, color: fatColor, minWidth: '60px' }}>{sig.fat_result ?? '—'}</td>
+                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>{sig.fat_tested_by ?? '—'}</td>
 
                   {/* SAT */}
                   <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warning)' }}>
                     {sig.sat_tested ? <span style={{ color: 'var(--warning)' }}>✓</span> : '—'}
                   </td>
-                  <td style={{ ...cell, ...mono, fontSize: '11px', color: satColor, minWidth: '60px' }}>
-                    {sig.sat_result ?? '—'}
-                  </td>
-                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>
-                    {sig.sat_tested_by ?? '—'}
-                  </td>
+                  <td style={{ ...cell, ...mono, color: satColor, minWidth: '60px' }}>{sig.sat_result ?? '—'}</td>
+                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>{sig.sat_tested_by ?? '—'}</td>
                 </tr>
               );
             })}
