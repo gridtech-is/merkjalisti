@@ -793,12 +793,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                     const ldOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.ldInst))] : [];
                     const pfxOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.prefix))].sort() : [];
                     const doOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.doName))].sort() : [];
+                    const instOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.lnInst).filter(Boolean))].sort() : [];
                     const daOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_do || f.doName === sig.iec61850_do)).map(f => f.daName).filter(Boolean))].sort() : [];
                     return (
                       <>
                         {ldOpts.length > 0 && <datalist id={`dl-ld-${sig.id}`}>{ldOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {lnOpts.length > 0 && <datalist id={`dl-ln-${sig.id}`}>{lnOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {pfxOpts.length > 1 && <datalist id={`dl-pfx-${sig.id}`}>{pfxOpts.map(v => <option key={v} value={v} />)}</datalist>}
+                        {instOpts.length > 0 && <datalist id={`dl-inst-${sig.id}`}>{instOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {doOpts.length > 0 && <datalist id={`dl-do-${sig.id}`}>{doOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {daOpts.length > 0 && <datalist id={`dl-da-${sig.id}`}>{daOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         <td style={{ ...cell, minWidth: '60px' }}>
@@ -835,6 +837,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         {/* lnInst */}
                         <td style={{ ...cell, minWidth: '50px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}`}
+                            list={instOpts.length > 0 ? `dl-inst-${sig.id}` : undefined}
                             placeholder="1" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
