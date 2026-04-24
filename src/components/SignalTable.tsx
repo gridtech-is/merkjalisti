@@ -19,6 +19,9 @@ function suggestDataset(lnClass: string | null, fc: string | null, cdc?: string 
 }
 
 function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; patch: Partial<BaySignal> }[] {
+  const patches: { id: string; patch: Partial<BaySignal> }[] = [];
+
+  // Pass 1: signals missing dataset
   const toAssign = allSignals.filter(s => !s.iec61850_dataset);
   const baseTotal = new Map<string, number>();
   for (const sig of toAssign) {
@@ -26,7 +29,6 @@ function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; p
     baseTotal.set(base, (baseTotal.get(base) ?? 0) + 1);
   }
   const bucketFill = new Map<string, number>();
-  const patches: { id: string; patch: Partial<BaySignal> }[] = [];
   for (const sig of toAssign) {
     const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc, sig.iec61850_cdc) ?? 'Ev';
     let name = base;
@@ -38,6 +40,13 @@ function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; p
     }
     patches.push({ id: sig.id, patch: { iec61850_dataset: name, iec61850_rcb: `r${name}` } });
   }
+
+  // Pass 2: signals with dataset but missing RCB
+  for (const sig of allSignals) {
+    if (!sig.iec61850_dataset || sig.iec61850_rcb) continue;
+    patches.push({ id: sig.id, patch: { iec61850_rcb: `r${sig.iec61850_dataset}` } });
+  }
+
   return patches;
 }
 
