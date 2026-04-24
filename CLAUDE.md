@@ -41,7 +41,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 
 ---
 
-## Staða núna — 2026-04-23
+## Staða núna — 2026-04-24
 
 ### Klárað og committað
 - **Plan 1–3** ✅ (review workflow, station_signals.json, migration)
@@ -51,23 +51,39 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - **Plan "Stöðvar-númer"** ✅ — `Project.station_number` single source of truth, cascade á `display_id`
 - **Undo/redo stack** ✅ — Ctrl+Z / Ctrl+Shift+Z í BayView
 - **Changelog revert** ✅ — afturkalla `FIELD_CHANGED` breytingar úr breytingasögu
+- **IEC 61850 restructure** ✅ — `iec61850_do_da` → `iec61850_do` + `iec61850_da`, `iec61850_ld` fjarlægt úr `SignalLibraryEntry`
+- **IEC 61850 dálkar sameinaðir** ✅ — 13 dálkar í SignalTable
+- **IED model import** ✅ — hlaða upp ICD/IID skrá, vistað sem `IedFcda[]` á GitHub
+- **SCD parser uppfærsla** ✅ — `DAType`/`BDA` þáttur, structured DAs með punkt-notation
+- **FCDA picker** ✅ — `≡` takki á IED reit, leitanlegur dropdown, fyllir IEC svæði sjálfkrafa
+- **Datalist autocomplete** ✅ — ldInst/lnClass/doName/daName reitir, context-aware síun
+- **Auto-fill** ✅ — þegar lnClass valið með eitt ldInst/prefix
+- **Block edit batch fix** ✅ — `handleBatchUpdate` í BayView
+- **ICD upload nafnaprófun** ✅ — 3-valkosta gluggi
+- **Sort by type** ✅ — ↕ Raða takki í BayView
+- **Duplicate count** ✅ — × [fjöldi] í afrita valin
 
-### Klárað en ekki committað (þessi session)
-- **IEC 61850 restructure** — `iec61850_do_da` → `iec61850_do` + `iec61850_da`, `iec61850_ld` fjarlægt úr `SignalLibraryEntry`
-- **IEC 61850 dálkar sameinaðir** — 13 dálkar í SignalTable: IED | ldInst | Prefix | lnClass | lnInst | doName | daName | FC | CDC | Dataset | RCB | DSE | Ref.
-- **IED model import** — hlaða upp ICD/IID skrá í Tæki flipann, vistað sem `IedFcda[]` á GitHub
-- **SCD parser uppfærsla** — `DAType`/`BDA` þáttur, structured DAs með punkt-notation (`Pos.Oper.ctlVal`)
-- **FCDA picker** — `≡` takki á IED reit, leitanlegur dropdown, fyllir IEC svæði sjálfkrafa
-- **Datalist autocomplete** — ldInst/lnClass/doName/daName reitir sýna gildi úr módeli, context-aware síun
-- **Auto-fill** — þegar lnClass valið með eitt ldInst/prefix: fyllir sjálfkrafa
-- **Block edit batch fix** — `handleBatchUpdate` í BayView, lagar bug þar sem aðeins fyrsta lína uppfærðist
-- **ICD upload nafnaprófun** — 3-valkosta gluggi þegar IED nafn í skrá passar ekki við tæki
-- **Sort by type** — ↕ Raða takki í BayView
-- **Duplicate count** — × [fjöldi] í afrita valin
+### Klárað en ekki pushað (10 commits)
+- **Plan 4 — Equipment templates** ✅ (7 commits)
+  - `EquipmentTemplateSignal` gerð, `signals[]` + `iec61850_edition` á `EquipmentTemplate`
+  - `equipmentTemplateService.ts` — CRUD + `createTemplateFromIED` + `applyTemplateToBay`
+  - `GitHubApi.deleteFile` — ný aðferð
+  - `EquipmentTemplateEditor.tsx` — modal með signal töflu, auto-fill úr library, 30s auto-commit
+  - `ApplyTemplateModal.tsx` — velur sniðmát, preview count, "Beita" á IED í reit
+  - `LibraryView` Sniðmát flipi — sýnir product catalog + signal templates, opnar editor
+  - `BayView` — IED chips ofan við merkatöflu, "↓ Sniðmát" takki
+  - `ProjectView` — "⊕ Sniðmát" takki á IED row, `SaveTemplateModal`
+- **ICD/IID innlestur lagfærður** ✅ (3 commits)
+  - `Equipment.config_version` — nýr reitur í `types.ts`
+  - `scdParser`: les `configVersion` úr IED element, dýpt aukin í `expandDa` (1→3) svo CMV/Vector/AnalogueValue-gerðir (t.d. `A.phsA.cVal.mag.f`) finnast
+  - `iedModelService`: `ParsedIedMeta` skilar `manufacturer`, `typeCode`, `configVersion`; velur IED með flest LD (forðast template IED)
+  - `ProjectView`: `.iid,.cid,.scd,.xml` samþykkt, metadata fyllt inn sjálfvirkt úr skrá, "Líkan"→"Tegund", "Versía" dálkur, mismatch-próf á móti tech key
+  - 52 testar ✅, build ✅
 
 ### Óklárað / framundan
-- **SCD import end-to-end próf** — `ImportScdModal.tsx` tengt en ekki prófað með raunverulegri skrá
-- **Plan 4 — Equipment templates** — spec skrifað (`docs/superpowers/specs/2026-04-17-plan4-equipment-templates-design.md`), implementation plan vantar
+- **Push** — 10 commits á `main`, ekki enn á GitHub
+- **SaaS/viðskiptavinir spec** — `docs/superpowers/specs/2026-04-23-saas-vidskiptavinir-design.md` — Supabase, RLS, RBAC, IP allowlist, audit log
+- **Plan 5** — ekki skilgreint enn
 
 ### IEC 61850 gagnalíkan
 - `SignalLibraryEntry` hefur: `iec61850_ln`, `iec61850_do`, `iec61850_da`, `iec61850_fc`, `iec61850_cdc`, `iec61850_dataset` (ekki `iec61850_ld` — instance-specific)
@@ -75,7 +91,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - IED módel geymt sem `IedFcda[]` í `projects/{id}/ied_models/{equipment.id}.json`
 
 ### Git staða
-- App repo: á `main`, **ócommittuð breyting** (~1115 línur) frá þessari session — commit áður en push
+- App repo: á `main`, **10 commits ópushaðir** — push á GitHub
 - Data repo: clean
 
 ### Athugið á nýrri tölvu
