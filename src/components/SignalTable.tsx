@@ -164,6 +164,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [blockRcb, setBlockRcb] = useState('');
   const [blockDse, setBlockDse] = useState('');
   const [blockEqCode, setBlockEqCode] = useState('');
+  const [blockClearFields, setBlockClearFields] = useState<Set<string>>(new Set());
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -188,21 +189,38 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     return n;
   });
 
+  const toggleClear = (f: string) => setBlockClearFields(prev => {
+    const next = new Set(prev);
+    next.has(f) ? next.delete(f) : next.add(f);
+    return next;
+  });
+  const isClear = (f: string) => blockClearFields.has(f);
+
   const applyBlock = () => {
     const ids = [...selected];
     const patch: Partial<BaySignal> = {};
     if (blockEqCode) patch.equipment_code = blockEqCode;
     if (blockIed) patch.iec61850_ied = blockIed;
-    if (blockLdInst !== '') patch.iec61850_ld = blockLdInst || null;
-    if (blockPrefix !== '') patch.iec61850_ln_prefix = blockPrefix || null;
-    if (blockLnClass !== '') patch.iec61850_ln = blockLnClass || null;
-    if (blockInst !== '') patch.iec61850_ln_inst = blockInst || null;
-    if (blockDoName !== '') patch.iec61850_do = blockDoName || null;
-    if (blockDaName !== '') patch.iec61850_da = blockDaName || null;
-    if (blockFc !== '') patch.iec61850_fc = blockFc || null;
-    if (blockDataset !== '') patch.iec61850_dataset = blockDataset || null;
-    if (blockRcb !== '') patch.iec61850_rcb = blockRcb || null;
-    if (blockDse !== '') patch.iec61850_dataset_entry = blockDse || null;
+    if (isClear('ldInst'))  patch.iec61850_ld           = null;
+    else if (blockLdInst  !== '') patch.iec61850_ld      = blockLdInst || null;
+    if (isClear('prefix'))  patch.iec61850_ln_prefix     = null;
+    else if (blockPrefix  !== '') patch.iec61850_ln_prefix = blockPrefix || null;
+    if (isClear('lnClass')) patch.iec61850_ln            = null;
+    else if (blockLnClass !== '') patch.iec61850_ln       = blockLnClass || null;
+    if (isClear('inst'))    patch.iec61850_ln_inst        = null;
+    else if (blockInst    !== '') patch.iec61850_ln_inst  = blockInst || null;
+    if (isClear('doName'))  patch.iec61850_do             = null;
+    else if (blockDoName  !== '') patch.iec61850_do       = blockDoName || null;
+    if (isClear('daName'))  patch.iec61850_da             = null;
+    else if (blockDaName  !== '') patch.iec61850_da       = blockDaName || null;
+    if (isClear('fc'))      patch.iec61850_fc             = null;
+    else if (blockFc      !== '') patch.iec61850_fc       = blockFc || null;
+    if (isClear('dataset')) patch.iec61850_dataset        = null;
+    else if (blockDataset !== '') patch.iec61850_dataset  = blockDataset || null;
+    if (isClear('rcb'))     patch.iec61850_rcb            = null;
+    else if (blockRcb     !== '') patch.iec61850_rcb      = blockRcb || null;
+    if (isClear('dse'))     patch.iec61850_dataset_entry  = null;
+    else if (blockDse     !== '') patch.iec61850_dataset_entry = blockDse || null;
     if (onBatchUpdate) {
       onBatchUpdate(ids.map(id => ({ id, patch })));
     } else {
@@ -211,6 +229,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     setBlockIed(''); setBlockLdInst(''); setBlockPrefix(''); setBlockLnClass(''); setBlockInst('');
     setBlockDoName(''); setBlockDaName(''); setBlockFc(''); setBlockDataset('');
     setBlockRcb(''); setBlockDse(''); setBlockEqCode('');
+    setBlockClearFields(new Set());
     setSelected(new Set());
   };
 
@@ -387,56 +406,36 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
               {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
             </select>
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            ldInst
-            <input value={blockLdInst} onChange={e => setBlockLdInst(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            Prefix
-            <input value={blockPrefix} onChange={e => setBlockPrefix(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            lnClass
-            <input value={blockLnClass} onChange={e => setBlockLnClass(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            lnInst
-            <input value={blockInst} onChange={e => setBlockInst(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '55px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            doName
-            <input value={blockDoName} onChange={e => setBlockDoName(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            daName
-            <input value={blockDaName} onChange={e => setBlockDaName(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '70px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            FC
-            <input value={blockFc} onChange={e => setBlockFc(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '50px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            Dataset
-            <input value={blockDataset} onChange={e => setBlockDataset(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '100px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            RCB
-            <input value={blockRcb} onChange={e => setBlockRcb(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '130px' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            DSE
-            <input value={blockDse} onChange={e => setBlockDse(e.target.value)}
-              placeholder="(óbreytt)" style={{ ...blockInputStyle, fontFamily: 'monospace', width: '110px' }} />
-          </label>
+          {([
+            { key: 'ldInst',  label: 'ldInst',  val: blockLdInst,  set: setBlockLdInst,  w: 70  },
+            { key: 'prefix',  label: 'Prefix',  val: blockPrefix,  set: setBlockPrefix,  w: 70  },
+            { key: 'lnClass', label: 'lnClass', val: blockLnClass, set: setBlockLnClass, w: 70  },
+            { key: 'inst',    label: 'lnInst',  val: blockInst,    set: setBlockInst,    w: 55  },
+            { key: 'doName',  label: 'doName',  val: blockDoName,  set: setBlockDoName,  w: 70  },
+            { key: 'daName',  label: 'daName',  val: blockDaName,  set: setBlockDaName,  w: 70  },
+            { key: 'fc',      label: 'FC',      val: blockFc,      set: setBlockFc,      w: 50  },
+            { key: 'dataset', label: 'Dataset', val: blockDataset, set: setBlockDataset, w: 100 },
+            { key: 'rcb',     label: 'RCB',     val: blockRcb,     set: setBlockRcb,     w: 130 },
+            { key: 'dse',     label: 'DSE',     val: blockDse,     set: setBlockDse,     w: 110 },
+          ] as { key: string; label: string; val: string; set: (v: string) => void; w: number }[]).map(f => {
+            const clearing = isClear(f.key);
+            return (
+              <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                {f.label}
+                <div style={{ display: 'flex', gap: '2px' }}>
+                  <input value={clearing ? '' : f.val}
+                    onChange={e => { f.set(e.target.value); if (clearing) toggleClear(f.key); }}
+                    disabled={clearing}
+                    placeholder={clearing ? '— hreinsa —' : '(óbreytt)'}
+                    style={{ ...blockInputStyle, fontFamily: 'monospace', width: `${f.w}px`, opacity: clearing ? 0.5 : 1 }} />
+                  <button type="button" onClick={() => toggleClear(f.key)} title="Hreinsa svæðið á völdum"
+                    style={{ padding: '0 5px', fontSize: '13px', lineHeight: 1, border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', flexShrink: 0,
+                      background: clearing ? 'var(--danger)' : 'var(--surface-alt)',
+                      color: clearing ? '#fff' : 'var(--text-secondary)' }}>×</button>
+                </div>
+              </label>
+            );
+          })}
           <div style={{ display: 'flex', gap: 'var(--space-2)', alignSelf: 'flex-end' }}>
             <Button size="sm" onClick={applyBlock}>Nota á valin</Button>
             {onDuplicate && (
