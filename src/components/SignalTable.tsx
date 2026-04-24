@@ -294,7 +294,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
             {visibleSignals.length} / {signals.length}
           </span>
         )}
-        {!reviewMode && onBatchUpdate && signals.some(s => !s.iec61850_dataset && suggestDataset(s.iec61850_ln, s.iec61850_fc)) && (
+        {!reviewMode && onBatchUpdate && signals.length > 0 && (
           <button
             type="button"
             onClick={() => {
