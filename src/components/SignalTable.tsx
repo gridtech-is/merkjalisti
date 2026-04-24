@@ -14,11 +14,28 @@ function suggestDataset(lnClass: string | null, fc: string | null): string | nul
   return null;
 }
 
-function assignDataset(base: string, signals: BaySignal[], maxSize: number): string {
-  for (let n = 1; ; n++) {
-    const name = `${base}${n}`;
-    if (signals.filter(s => s.iec61850_dataset === name).length < maxSize) return name;
+function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; patch: Partial<BaySignal> }[] {
+  const toAssign = allSignals.filter(s => !s.iec61850_dataset);
+  const baseTotal = new Map<string, number>();
+  for (const sig of toAssign) {
+    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc);
+    if (base) baseTotal.set(base, (baseTotal.get(base) ?? 0) + 1);
   }
+  const bucketFill = new Map<string, number>();
+  const patches: { id: string; patch: Partial<BaySignal> }[] = [];
+  for (const sig of toAssign) {
+    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc);
+    if (!base) continue;
+    let name = base;
+    if ((baseTotal.get(base) ?? 0) >= 100) {
+      for (let n = 1; ; n++) {
+        const bn = `${base}${n}`;
+        if ((bucketFill.get(bn) ?? 0) < maxSize) { bucketFill.set(bn, (bucketFill.get(bn) ?? 0) + 1); name = bn; break; }
+      }
+    }
+    patches.push({ id: sig.id, patch: { iec61850_dataset: name, iec61850_rcb: `r${name}` } });
+  }
+  return patches;
 }
 
 interface Props {
@@ -276,6 +293,22 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
             {visibleSignals.length} / {signals.length}
           </span>
+        )}
+        {!reviewMode && onBatchUpdate && signals.some(s => !s.iec61850_dataset && suggestDataset(s.iec61850_ln, s.iec61850_fc)) && (
+          <button
+            type="button"
+            onClick={() => {
+              const patches = fillDatasets(signals, maxDatasetSize);
+              if (patches.length > 0) onBatchUpdate(patches);
+            }}
+            style={{
+              marginLeft: 'auto', fontSize: '12px', padding: '4px 10px',
+              background: 'transparent', border: '1px solid var(--line)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+            title="Fylla inn Dataset og RCB fyrir öll merki sem vantar"
+          >↻ Fylla Dataset / RCB</button>
         )}
       </div>
       {/* Block edit toolbar */}
@@ -777,8 +810,6 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                               const ref = `${f.ldInst}/${f.prefix}${f.lnClass}${f.lnInst}.${f.doName}${f.daName ? '.'+f.daName : ''}`;
                               return (
                                 <div key={idx} onClick={() => {
-                                  const dsBase = !sig.iec61850_dataset ? suggestDataset(f.lnClass, f.fc) : null;
-                                  const ds = dsBase ? assignDataset(dsBase, signals, maxDatasetSize) : null;
                                   onUpdate(sig.id, {
                                     iec61850_ld: f.ldInst,
                                     iec61850_ln_prefix: f.prefix || null,
@@ -788,7 +819,6 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                     iec61850_da: f.daName || null,
                                     iec61850_fc: f.fc,
                                     iec61850_cdc: f.cdc || null,
-                                    ...(ds ? { iec61850_dataset: ds, iec61850_rcb: `r${ds}` } : {}),
                                   });
                                   setFcdaPickerId(null);
                                 }} style={{ padding: '4px 10px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '11px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}
@@ -852,10 +882,6 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 const pfxs = pfxOptsForLn(ln);
                                 if (pfxs.length === 1) patch.iec61850_ln_prefix = pfxs[0] || null;
                               }
-                              if (ln && !sig.iec61850_dataset) {
-                                const dsBase = suggestDataset(ln, sig.iec61850_fc);
-                                if (dsBase) { const ds = assignDataset(dsBase, signals, maxDatasetSize); patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
-                              }
                               onUpdate(sig.id, patch);
                             }}
                             onChange={() => {}} />
@@ -904,10 +930,6 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 );
                                 if (match?.fc) patch.iec61850_fc = match.fc;
                                 if (match?.cdc) patch.iec61850_cdc = match.cdc;
-                                if (!sig.iec61850_dataset) {
-                                  const dsBase = suggestDataset(sig.iec61850_ln, match?.fc ?? sig.iec61850_fc);
-                                  if (dsBase) { const ds = assignDataset(dsBase, signals, maxDatasetSize); patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
-                                }
                               }
                               onUpdate(sig.id, patch);
                             }}
