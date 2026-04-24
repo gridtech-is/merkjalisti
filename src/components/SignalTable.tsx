@@ -50,6 +50,22 @@ function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; p
   return patches;
 }
 
+function correctDatasets(allSignals: BaySignal[]): { id: string; patch: Partial<BaySignal>; from: string }[] {
+  const corrections: { id: string; patch: Partial<BaySignal>; from: string }[] = [];
+  for (const sig of allSignals) {
+    if (!sig.iec61850_dataset) continue;
+    const suggested = suggestDataset(sig.iec61850_ln, sig.iec61850_fc, sig.iec61850_cdc);
+    if (!suggested) continue;
+    // Check if current dataset base matches suggestion (strip trailing number)
+    const currentBase = sig.iec61850_dataset.replace(/\d+$/, '');
+    if (currentBase === suggested) continue;
+    // Wrong category — suggest correction
+    const name = suggested; // simplified: no bucket splitting for corrections
+    corrections.push({ id: sig.id, from: sig.iec61850_dataset, patch: { iec61850_dataset: name, iec61850_rcb: `r${name}` } });
+  }
+  return corrections;
+}
+
 interface Props {
   signals: BaySignal[];
   equipment: Equipment[];
@@ -126,7 +142,11 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [filterEq, setFilterEq] = useState('');
   const [filterText, setFilterText] = useState('');
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
-  const [datasetPreview, setDatasetPreview] = useState<{ id: string; patch: Partial<BaySignal>; signalName: string; current: string }[] | null>(null);
+  const [datasetPreview, setDatasetPreview] = useState<{
+    fills: { id: string; patch: Partial<BaySignal>; signalName: string }[];
+    corrections: { id: string; patch: Partial<BaySignal>; signalName: string; from: string }[];
+  } | null>(null);
+  const [includeCorrections, setIncludeCorrections] = useState(false);
   const [flagComment, setFlagComment] = useState('');
   const [popupId, setPopupId] = useState<string | null>(null);
   const [fcdaPickerId, setFcdaPickerId] = useState<string | null>(null);
@@ -311,12 +331,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           <button
             type="button"
             onClick={() => {
-              const patches = fillDatasets(signals, maxDatasetSize);
-              const preview = patches.map(p => {
-                const sig = signals.find(s => s.id === p.id)!;
-                return { ...p, signalName: sig.signal_name, current: sig.iec61850_dataset ?? '—' };
-              });
-              setDatasetPreview(preview);
+              const fills = fillDatasets(signals, maxDatasetSize).map(p => ({
+                ...p, signalName: signals.find(s => s.id === p.id)!.signal_name,
+              }));
+              const corrections = correctDatasets(signals).map(c => ({
+                ...c, signalName: signals.find(s => s.id === c.id)!.signal_name,
+              }));
+              setIncludeCorrections(false);
+              setDatasetPreview({ fills, corrections });
             }}
             style={{
               marginLeft: 'auto', fontSize: '12px', padding: '4px 10px',
@@ -1083,50 +1105,70 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
         </table>
       </div>
 
-      {datasetPreview && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', width: '520px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Fylla Dataset / RCB</h3>
-              <button type="button" onClick={() => setDatasetPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-secondary)' }}>✕</button>
-            </div>
-            {datasetPreview.length === 0 ? (
-              <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Öll merki eru þegar með Dataset — ekkert að fylla.</p>
-            ) : (
-              <>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{datasetPreview.length} merki fá Dataset og RCB:</p>
+      {datasetPreview && (() => {
+        const active = includeCorrections
+          ? [...datasetPreview.fills, ...datasetPreview.corrections]
+          : datasetPreview.fills;
+        const cell: React.CSSProperties = { padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', fontFamily: 'monospace', fontSize: '12px' };
+        const head: React.CSSProperties = { padding: '5px 10px', background: 'var(--surface-alt)', borderBottom: '1px solid var(--line)', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '12px' };
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', width: '560px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Fylla Dataset / RCB</h3>
+                <button type="button" onClick={() => setDatasetPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-secondary)' }}>✕</button>
+              </div>
+
+              {datasetPreview.corrections.length > 0 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                  <input type="checkbox" checked={includeCorrections} onChange={e => setIncludeCorrections(e.target.checked)} />
+                  Leiðrétta líka ranga flokka ({datasetPreview.corrections.length} merki — t.d. Ev → Meas)
+                </label>
+              )}
+
+              {active.length === 0 ? (
+                <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Ekkert að gera — öll merki eru rétt stillt.</p>
+              ) : (
                 <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        {['Merki', 'Dataset', 'RCB'].map(h => (
-                          <th key={h} style={{ padding: '5px 10px', background: 'var(--surface-alt)', borderBottom: '1px solid var(--line)', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>
-                        ))}
+                        <th style={head}>Merki</th>
+                        <th style={head}>Frá</th>
+                        <th style={head}>Í</th>
+                        <th style={head}>RCB</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {datasetPreview.map(p => (
-                        <tr key={p.id}>
-                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', fontFamily: 'monospace' }}>{p.signalName}</td>
-                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', color: 'var(--accent)', fontFamily: 'monospace' }}>{p.patch.iec61850_dataset as string}</td>
-                          <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--line-muted)', color: 'var(--muted)', fontFamily: 'monospace' }}>{p.patch.iec61850_rcb as string}</td>
-                        </tr>
-                      ))}
+                      {active.map(p => {
+                        const from = 'from' in p ? p.from : (signals.find(s => s.id === p.id)?.iec61850_dataset ?? '—');
+                        return (
+                          <tr key={p.id}>
+                            <td style={cell}>{p.signalName}</td>
+                            <td style={{ ...cell, color: 'var(--muted)' }}>{String(from)}</td>
+                            <td style={{ ...cell, color: 'var(--accent)' }}>{String(p.patch.iec61850_dataset ?? from)}</td>
+                            <td style={{ ...cell, color: 'var(--muted)' }}>{String(p.patch.iec61850_rcb ?? '')}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-                  <button type="button" onClick={() => setDatasetPreview(null)} style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text)' }}>Hætta við</button>
-                  <button type="button" onClick={() => { onBatchUpdate!(datasetPreview.map(p => ({ id: p.id, patch: p.patch }))); setDatasetPreview(null); }}
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                <button type="button" onClick={() => setDatasetPreview(null)} style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text)' }}>Hætta við</button>
+                {active.length > 0 && (
+                  <button type="button" onClick={() => { onBatchUpdate!(active.map(p => ({ id: p.id, patch: p.patch }))); setDatasetPreview(null); }}
                     style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
-                    Beita ({datasetPreview.length})
+                    Beita ({active.length})
                   </button>
-                </div>
-              </>
-            )}
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
