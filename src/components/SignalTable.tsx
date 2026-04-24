@@ -265,7 +265,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
         s.signal_name.toLowerCase().includes(q) ||
         code.includes(q) ||
         s.name_is.toLowerCase().includes(q) ||
-        (s.name_en ?? '').toLowerCase().includes(q)
+        (s.name_en ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_ied ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_ld ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_ln ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_ln_prefix ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_do ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_da ?? '').toLowerCase().includes(q) ||
+        (s.iec61850_dataset ?? '').toLowerCase().includes(q)
       );
     }
     return true;
