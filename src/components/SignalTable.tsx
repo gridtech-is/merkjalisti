@@ -6,26 +6,29 @@ import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmM
 const STAT_CLASSES = new Set(['LPHD', 'LGOS', 'LSVS', 'LCCH', 'LTMS', 'LTRK', 'LLN0']);
 const PROT_R_CLASSES = new Set(['RBRF', 'RREC', 'RDIR', 'RDRE', 'RFLO', 'RPSB', 'RSYN', 'RTOV']);
 
-function suggestDataset(lnClass: string | null, fc: string | null): string | null {
+const MEAS_CDC = new Set(['MV', 'CMV', 'WYE', 'DEL', 'SEQ', 'HMV', 'HWYE', 'HDEL']);
+
+function suggestDataset(lnClass: string | null, fc: string | null, cdc?: string | null): string | null {
   if (fc === 'MX') return 'Meas';
+  if (cdc && MEAS_CDC.has(cdc)) return 'Meas';
   if (lnClass && STAT_CLASSES.has(lnClass)) return 'Stat';
   if (lnClass && (lnClass.startsWith('P') || PROT_R_CLASSES.has(lnClass))) return 'Prot';
   if (fc && ['ST', 'SP', 'SV', 'CO', 'EX'].includes(fc)) return 'Ev';
+  if (lnClass || fc || cdc) return 'Ev';
   return null;
 }
 
 function fillDatasets(allSignals: BaySignal[], maxSize: number): { id: string; patch: Partial<BaySignal> }[] {
-  const toAssign = allSignals.filter(s => !s.iec61850_dataset);
+  const toAssign = allSignals.filter(s => !s.iec61850_dataset && s.source_type === 'IED');
   const baseTotal = new Map<string, number>();
   for (const sig of toAssign) {
-    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc);
-    if (base) baseTotal.set(base, (baseTotal.get(base) ?? 0) + 1);
+    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc, sig.iec61850_cdc) ?? 'Ev';
+    baseTotal.set(base, (baseTotal.get(base) ?? 0) + 1);
   }
   const bucketFill = new Map<string, number>();
   const patches: { id: string; patch: Partial<BaySignal> }[] = [];
   for (const sig of toAssign) {
-    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc);
-    if (!base) continue;
+    const base = suggestDataset(sig.iec61850_ln, sig.iec61850_fc, sig.iec61850_cdc) ?? 'Ev';
     let name = base;
     if ((baseTotal.get(base) ?? 0) >= 100) {
       for (let n = 1; ; n++) {
