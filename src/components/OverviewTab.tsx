@@ -25,6 +25,41 @@ interface Row {
 type PhaseFilter = 'ALL' | ProjectPhase;
 type SourceFilter = 'ALL' | 'IED' | 'HARDWIRED';
 
+const cell: React.CSSProperties = {
+  padding: '5px 6px',
+  borderBottom: '1px solid var(--line-muted)',
+  fontSize: '12px',
+  verticalAlign: 'middle',
+};
+
+const head: React.CSSProperties = {
+  ...cell,
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  background: 'var(--surface-alt)',
+  whiteSpace: 'nowrap',
+  position: 'sticky',
+  top: 0,
+  zIndex: 1,
+};
+
+function buildRef(sig: BaySignal): string {
+  const ied = sig.iec61850_ied ?? '';
+  const ld = sig.iec61850_ld ?? '';
+  const pfx = sig.iec61850_ln_prefix ?? '';
+  const ln = sig.iec61850_ln ?? '';
+  const inst = sig.iec61850_ln_inst ?? '';
+  const doN = sig.iec61850_do ?? '';
+  const daN = sig.iec61850_da ?? '';
+  if (!ld && !ln && !doN) return '—';
+  const lnPart = `${pfx}${ln}${inst}`;
+  const doPart = [doN, daN].filter(Boolean).join('.');
+  const ref = [ld, lnPart].filter(Boolean).join('/') + (doPart ? `.${doPart}` : '');
+  return ied ? `${ied}${ref}` : ref;
+}
+
+import React from 'react';
+
 export function OverviewTab({ projectId, projectName }: Props) {
   const { api } = useApi();
   const navigate = useNavigate();
@@ -35,7 +70,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [selectedBays, setSelectedBays] = useState<Set<string>>(new Set()); // empty = all
+  const [selectedBays, setSelectedBays] = useState<Set<string>>(new Set());
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('ALL');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const [alarmOnly, setAlarmOnly] = useState(false);
@@ -72,47 +107,33 @@ export function OverviewTab({ projectId, projectName }: Props) {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return rows.filter(r => {
-      // Search
       if (q) {
         const hay = [
           r.signal.signal_name, r.signal.name_is, r.signal.name_en ?? '',
-          r.signal.iec61850_ld ?? '', r.signal.iec61850_ln ?? '', r.signal.iec61850_do ?? '', r.signal.iec61850_da ?? '',
+          r.signal.equipment_code,
+          r.signal.iec61850_ied ?? '', r.signal.iec61850_ld ?? '',
+          r.signal.iec61850_ln ?? '', r.signal.iec61850_do ?? '', r.signal.iec61850_da ?? '',
+          r.signal.iec61850_dataset ?? '',
         ].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      // Bay multiselect
       if (selectedBays.size > 0) {
         const key = r.source.kind === 'bay' ? r.source.bayId : 'station';
         if (!selectedBays.has(key)) return false;
       }
-      // Phase
       if (phaseFilter !== 'ALL' && r.signal.phase_added !== phaseFilter) return false;
-      // Source type
       if (sourceFilter !== 'ALL' && r.signal.source_type !== sourceFilter) return false;
-      // Alarm only
       if (alarmOnly && !r.signal.is_alarm) return false;
-      // Untested only
       if (untestedOnly && r.signal.fat_tested && r.signal.sat_tested) return false;
       return true;
     });
   }, [rows, search, selectedBays, phaseFilter, sourceFilter, alarmOnly, untestedOnly]);
 
-  const iecAddress = (sig: BaySignal): string => {
-    const parts = [sig.iec61850_ld, sig.iec61850_ln, sig.iec61850_do, sig.iec61850_da].filter(Boolean);
-    return parts.length > 0 ? parts.join('/') : '—';
-  };
-
   const handleExport = () => {
     const syntheticStationBay: Bay = {
-      id: 'station',
-      voltage_level: '',
-      bay_name: 'Stöðvarmerki',
-      display_id: 'STÖÐ',
-      description: null,
-      equipment_ids: [],
-      signals: stationSignals,
-      status: 'DRAFT',
-      review: null,
+      id: 'station', voltage_level: '', bay_name: 'Stöðvarmerki',
+      display_id: 'STÖÐ', description: null, equipment_ids: [],
+      signals: stationSignals, status: 'DRAFT', review: null,
     };
     exportAllBaysToExcel([...bays, syntheticStationBay], projectName);
   };
@@ -125,39 +146,27 @@ export function OverviewTab({ projectId, projectName }: Props) {
     });
   };
 
-  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
-  if (error) return <p style={{ color: 'var(--danger)' }}>{error}</p>;
-
-  const cell: React.CSSProperties = {
-    padding: '5px 8px', borderBottom: '1px solid var(--line-muted)',
-    fontSize: '12px', verticalAlign: 'middle',
-  };
-  const head: React.CSSProperties = {
-    ...cell, fontWeight: 600, color: 'var(--text-secondary)',
-    background: 'var(--surface-alt)', whiteSpace: 'nowrap',
-    position: 'sticky', top: 0, zIndex: 1,
-  };
   const selectStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
     borderRadius: 'var(--radius-sm)', color: 'var(--text)',
     padding: '5px 8px', fontSize: '12px', outline: 'none',
   };
+
   const bayKeys: { key: string; label: string }[] = [
     ...bays.map(b => ({ key: b.id, label: b.display_id })),
     { key: 'station', label: 'Stöð' },
   ];
 
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (error) return <p style={{ color: 'var(--danger)' }}>{error}</p>;
+
   return (
     <div>
       {/* Filter row 1 */}
       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          placeholder="Leit — kóði, nafn, IEC address..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ ...selectStyle, minWidth: '240px', flex: '1 1 240px' }}
-        />
+        <input type="text" placeholder="Leit — kóði, nafn, IEC address..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          style={{ ...selectStyle, minWidth: '240px', flex: '1 1 240px' }} />
         <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value as PhaseFilter)} style={selectStyle}>
           <option value="ALL">Allir fasar</option>
           <option value="DESIGN">DESIGN</option>
@@ -173,34 +182,29 @@ export function OverviewTab({ projectId, projectName }: Props) {
         </select>
       </div>
 
-      {/* Bay multiselect chips */}
+      {/* Bay chips */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '11px', color: 'var(--muted)', alignSelf: 'center' }}>Reit:</span>
         {bayKeys.map(b => {
           const active = selectedBays.size === 0 || selectedBays.has(b.key);
           return (
-            <button key={b.key} type="button" onClick={() => toggleBayFilter(b.key)}
-              style={{
-                padding: '2px 8px', fontSize: '11px', borderRadius: 'var(--radius-sm)',
-                border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                background: active ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)',
-                color: active ? 'var(--accent)' : 'var(--muted)',
-                cursor: 'pointer', fontFamily: 'monospace',
-              }}>
-              {b.label}
-            </button>
+            <button key={b.key} type="button" onClick={() => toggleBayFilter(b.key)} style={{
+              padding: '2px 8px', fontSize: '11px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+              border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+              background: active ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'var(--surface-alt)',
+              color: active ? 'var(--accent)' : 'var(--muted)', fontFamily: 'monospace',
+            }}>{b.label}</button>
           );
         })}
         {selectedBays.size > 0 && (
-          <button type="button" onClick={() => setSelectedBays(new Set())}
-            style={{ padding: '2px 8px', fontSize: '11px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--line)', background: 'none', color: 'var(--muted)', cursor: 'pointer' }}>
-            Hreinsa
-          </button>
+          <button type="button" onClick={() => setSelectedBays(new Set())} style={{
+            padding: '2px 8px', fontSize: '11px', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--line)', background: 'none', color: 'var(--muted)', cursor: 'pointer',
+          }}>Hreinsa</button>
         )}
       </div>
 
-      {/* Filter row 2 — toggles + count + export */}
+      {/* Filter row 2 */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', cursor: 'pointer' }}>
           <input type="checkbox" checked={alarmOnly} onChange={e => setAlarmOnly(e.target.checked)} />
@@ -220,23 +224,57 @@ export function OverviewTab({ projectId, projectName }: Props) {
       <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'auto', maxHeight: '70vh' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
+            {/* Row 1 — group headers */}
             <tr>
-              {['Reit', 'Tæki', 'Kóði', 'Nafn IS', 'Nafn EN', 'Alarm', 'Klass', 'Uppruni', 'IEC 61850', 'Fasi', 'FAT', 'SAT'].map(h => (
-                <th key={h} style={head}>{h}</th>
+              <th rowSpan={2} style={{ ...head, whiteSpace: 'nowrap' }}>Reit</th>
+              {(['#', 'Tæki', 'Merki', 'Kóði', 'Texti'] as string[]).map(h => (
+                <th key={h} rowSpan={2} style={head}>{h}</th>
+              ))}
+              <th colSpan={2} style={{ ...head, borderLeft: '2px solid var(--line)', textAlign: 'center' }}>Stöður</th>
+              {(['Alarm', 'Fl.', 'Uppruni'] as string[]).map(h => (
+                <th key={h} rowSpan={2} style={head}>{h}</th>
+              ))}
+              <th colSpan={13} style={{ ...head, borderLeft: '2px solid var(--accent)', color: 'var(--accent)', textAlign: 'center' }}>
+                IEC 61850
+              </th>
+              <th rowSpan={2} style={head}>Fasi</th>
+              <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--success)', color: 'var(--success)', textAlign: 'center' }}>FAT</th>
+              <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--warning)', color: 'var(--warning)', textAlign: 'center' }}>SAT</th>
+            </tr>
+            {/* Row 2 — sub-headers */}
+            <tr>
+              {/* Stöður */}
+              {(['Staða', 'Tegund'] as string[]).map((h, i) => (
+                <th key={`st-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--line)' : undefined }}>{h}</th>
+              ))}
+              {/* IEC 61850 */}
+              {(['IED', 'ldInst', 'Prefix', 'lnClass', 'lnInst', 'doName', 'daName', 'FC', 'CDC', 'Dataset', 'RCB', 'DSE', 'Ref.'] as string[]).map((h, i) => (
+                <th key={`ie-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--accent)' : undefined }}>{h}</th>
+              ))}
+              {/* FAT */}
+              {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
+                <th key={`fat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--success)' : undefined }}>{h}</th>
+              ))}
+              {/* SAT */}
+              {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
+                <th key={`sat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--warning)' : undefined }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={12} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin merki</td></tr>
+              <tr><td colSpan={99} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engin merki</td></tr>
             )}
             {filtered.map((r, i) => {
               const sig = r.signal;
-              const fatColor = sig.fat_result === 'PASS' ? 'var(--success)' : sig.fat_result === 'FAIL' ? 'var(--danger)' : 'var(--text)';
-              const satColor = sig.sat_result === 'PASS' ? 'var(--success)' : sig.sat_result === 'FAIL' ? 'var(--danger)' : 'var(--text)';
+              const fatColor = sig.fat_result === 'PASS' ? 'var(--success)' : sig.fat_result === 'FAIL' ? 'var(--danger)' : 'var(--muted)';
+              const satColor = sig.sat_result === 'PASS' ? 'var(--success)' : sig.sat_result === 'FAIL' ? 'var(--danger)' : 'var(--muted)';
+              const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: '11px' };
+
               return (
                 <tr key={sig.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600 }}>
+                  {/* Reit */}
+                  <td style={{ ...cell, ...mono, fontWeight: 600 }}>
                     {r.source.kind === 'bay' ? (
                       <button type="button"
                         onClick={() => { if (r.source.kind === 'bay') navigate(`/projects/${projectId}/bays/${r.source.bayId}`); }}
@@ -247,17 +285,69 @@ export function OverviewTab({ projectId, projectName }: Props) {
                       <span style={{ color: 'var(--text-secondary)' }}>Stöð</span>
                     )}
                   </td>
-                  <td style={{ ...cell, fontFamily: 'monospace' }}>{sig.equipment_code}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace' }}>{sig.signal_name}</td>
-                  <td style={cell}>{sig.name_is}</td>
-                  <td style={{ ...cell, color: 'var(--muted)' }}>{sig.name_en ?? '—'}</td>
+                  {/* # */}
+                  <td style={{ ...cell, color: 'var(--muted)', fontSize: '11px', width: '28px' }}>{i + 1}</td>
+                  {/* Tæki */}
+                  <td style={{ ...cell, ...mono, color: 'var(--accent)', minWidth: '60px' }}>{sig.equipment_code}</td>
+                  {/* Merki */}
+                  <td style={{ ...cell, ...mono, color: 'var(--accent)', minWidth: '110px' }}>{sig.signal_name}</td>
+                  {/* Kóði (library code — same field in overview) */}
+                  <td style={{ ...cell, ...mono, minWidth: '90px', color: 'var(--text-secondary)' }}>{sig.signal_name}</td>
+                  {/* Texti */}
+                  <td style={{ ...cell, minWidth: '140px' }}>{sig.name_is}</td>
+
+                  {/* Stöður — Staða / Tegund */}
+                  <td style={{ ...cell, borderLeft: '2px solid var(--line)', fontSize: '11px', color: 'var(--text-secondary)', minWidth: '80px' }}>
+                    {sig.state_id ?? '—'}
+                  </td>
+                  <td style={{ ...cell, ...mono, fontSize: '10px', color: 'var(--muted)' }}>—</td>
+
+                  {/* Alarm */}
                   <td style={{ ...cell, textAlign: 'center' }}>{sig.is_alarm ? '✓' : '—'}</td>
-                  <td style={{ ...cell, textAlign: 'center' }}>{sig.alarm_class ?? '—'}</td>
+                  {/* Fl. (alarm class) */}
+                  <td style={{ ...cell, textAlign: 'center', fontSize: '11px' }}>{sig.alarm_class ? `F${sig.alarm_class}` : '—'}</td>
+                  {/* Uppruni */}
                   <td style={{ ...cell, fontSize: '11px' }}>{sig.source_type}</td>
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)' }}>{iecAddress(sig)}</td>
-                  <td style={{ ...cell, fontSize: '11px' }}>{sig.phase_added}</td>
-                  <td style={{ ...cell, textAlign: 'center', color: fatColor }}>{sig.fat_tested ? '✓' : '—'}</td>
-                  <td style={{ ...cell, textAlign: 'center', color: satColor }}>{sig.sat_tested ? '✓' : '—'}</td>
+
+                  {/* IEC 61850 */}
+                  <td style={{ ...cell, borderLeft: '2px solid var(--accent)', ...mono, fontSize: '11px', color: 'var(--accent)', minWidth: '70px' }}>{sig.iec61850_ied ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_ld ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_ln_prefix ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '60px' }}>{sig.iec61850_ln ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_ln_inst ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_do ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_da ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '35px' }}>{sig.iec61850_fc ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', color: 'var(--muted)', minWidth: '40px' }}>{sig.iec61850_cdc ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_dataset ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '55px' }}>{sig.iec61850_rcb ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', minWidth: '45px' }}>{sig.iec61850_dataset_entry ?? '—'}</td>
+                  <td style={{ ...cell, ...mono, fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '120px' }}>{buildRef(sig)}</td>
+
+                  {/* Fasi */}
+                  <td style={{ ...cell, fontSize: '10px', color: 'var(--muted)' }}>{sig.phase_added}</td>
+
+                  {/* FAT */}
+                  <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--success)' }}>
+                    {sig.fat_tested ? <span style={{ color: 'var(--success)' }}>✓</span> : '—'}
+                  </td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', color: fatColor, minWidth: '60px' }}>
+                    {sig.fat_result ?? '—'}
+                  </td>
+                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>
+                    {sig.fat_tested_by ?? '—'}
+                  </td>
+
+                  {/* SAT */}
+                  <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warning)' }}>
+                    {sig.sat_tested ? <span style={{ color: 'var(--warning)' }}>✓</span> : '—'}
+                  </td>
+                  <td style={{ ...cell, ...mono, fontSize: '11px', color: satColor, minWidth: '60px' }}>
+                    {sig.sat_result ?? '—'}
+                  </td>
+                  <td style={{ ...cell, fontSize: '11px', color: 'var(--muted)', minWidth: '80px' }}>
+                    {sig.sat_tested_by ?? '—'}
+                  </td>
                 </tr>
               );
             })}
