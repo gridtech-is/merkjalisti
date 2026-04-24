@@ -3,6 +3,17 @@ import React, { useState } from 'react';
 import { Button } from './ui';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType, IedFcda } from '../types';
 
+const STAT_CLASSES = new Set(['LPHD', 'LGOS', 'LSVS', 'LCCH', 'LTMS', 'LTRK', 'LLN0']);
+const PROT_R_CLASSES = new Set(['RBRF', 'RREC', 'RDIR', 'RDRE', 'RFLO', 'RPSB', 'RSYN', 'RTOV']);
+
+function suggestDataset(lnClass: string | null, fc: string | null): string | null {
+  if (fc === 'MX') return 'Meas';
+  if (lnClass && STAT_CLASSES.has(lnClass)) return 'Stat';
+  if (lnClass && (lnClass.startsWith('P') || PROT_R_CLASSES.has(lnClass))) return 'Prot';
+  if (fc && ['ST', 'SP', 'SV', 'CO', 'EX'].includes(fc)) return 'Ev';
+  return null;
+}
+
 interface Props {
   signals: BaySignal[];
   equipment: Equipment[];
@@ -758,6 +769,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                               const ref = `${f.ldInst}/${f.prefix}${f.lnClass}${f.lnInst}.${f.doName}${f.daName ? '.'+f.daName : ''}`;
                               return (
                                 <div key={idx} onClick={() => {
+                                  const ds = !sig.iec61850_dataset ? suggestDataset(f.lnClass, f.fc) : null;
                                   onUpdate(sig.id, {
                                     iec61850_ld: f.ldInst,
                                     iec61850_ln_prefix: f.prefix || null,
@@ -767,6 +779,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                     iec61850_da: f.daName || null,
                                     iec61850_fc: f.fc,
                                     iec61850_cdc: f.cdc || null,
+                                    ...(ds ? { iec61850_dataset: ds, iec61850_rcb: `r${ds}` } : {}),
                                   });
                                   setFcdaPickerId(null);
                                 }} style={{ padding: '4px 10px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '11px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}
@@ -830,6 +843,10 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 const pfxs = pfxOptsForLn(ln);
                                 if (pfxs.length === 1) patch.iec61850_ln_prefix = pfxs[0] || null;
                               }
+                              if (ln && !sig.iec61850_dataset) {
+                                const ds = suggestDataset(ln, sig.iec61850_fc);
+                                if (ds) { patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
+                              }
                               onUpdate(sig.id, patch);
                             }}
                             onChange={() => {}} />
@@ -878,6 +895,10 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                                 );
                                 if (match?.fc) patch.iec61850_fc = match.fc;
                                 if (match?.cdc) patch.iec61850_cdc = match.cdc;
+                                if (!sig.iec61850_dataset) {
+                                  const ds = suggestDataset(sig.iec61850_ln, match?.fc ?? sig.iec61850_fc);
+                                  if (ds) { patch.iec61850_dataset = ds; patch.iec61850_rcb = `r${ds}`; }
+                                }
                               }
                               onUpdate(sig.id, patch);
                             }}
@@ -896,13 +917,13 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   <td style={{ ...cell, fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', minWidth: '50px' }}>{sig.iec61850_cdc ?? '—'}</td>
                   {/* Dataset */}
                   <td style={{ ...cell, minWidth: '90px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_dataset ?? ''} key={`ds-${sig.id}`}
+                    <input style={eInput} defaultValue={sig.iec61850_dataset ?? ''} key={`ds-${sig.id}-${sig.iec61850_dataset}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_dataset: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
                   {/* RCB */}
                   <td style={{ ...cell, minWidth: '100px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_rcb ?? ''} key={`rcb-${sig.id}`}
+                    <input style={eInput} defaultValue={sig.iec61850_rcb ?? ''} key={`rcb-${sig.id}-${sig.iec61850_rcb}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_rcb: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
