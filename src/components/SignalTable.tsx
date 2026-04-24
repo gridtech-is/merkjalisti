@@ -498,7 +498,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
         </datalist>
       )}
       <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+        <table style={{ width: 'auto', borderCollapse: 'collapse', minWidth: '1700px' }}>
           <thead>
             <tr>
               <th style={head}>
@@ -823,7 +823,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                     </select>
                   </td>
                   {/* IEC 61850 — IED */}
-                  <td style={{ ...cell, minWidth: '100px', borderLeft: '2px solid var(--accent)', position: 'relative' }}>
+                  <td style={{ ...cell, minWidth: '130px', borderLeft: '2px solid var(--accent)', position: 'relative' }}>
                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
                       {iedOptions.length > 0 ? (
                         <select value={sig.iec61850_ied ?? ''} onChange={e => onUpdate(sig.id, { iec61850_ied: e.target.value || null })} style={eSelect}>
@@ -907,21 +907,21 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         {instOpts.length > 0 && <datalist id={`dl-inst-${sig.id}`}>{instOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {doOpts.length > 0 && <datalist id={`dl-do-${sig.id}`}>{doOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         {daOpts.length > 0 && <datalist id={`dl-da-${sig.id}`}>{daOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        <td style={{ ...cell, minWidth: '60px' }}>
+                        <td style={{ ...cell, minWidth: '85px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ld ?? ''} key={`ld-${sig.id}-${sig.iec61850_ld}`}
                             list={ldOpts.length > 0 ? `dl-ld-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ld: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* Prefix */}
-                        <td style={{ ...cell, minWidth: '55px' }}>
+                        <td style={{ ...cell, minWidth: '65px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}-${sig.iec61850_ln_prefix}`}
                             list={pfxOpts.length > 1 ? `dl-pfx-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* lnClass */}
-                        <td style={{ ...cell, minWidth: '65px' }}>
+                        <td style={{ ...cell, minWidth: '75px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln ?? ''} key={`ln-${sig.id}-${sig.iec61850_ln}`}
                             list={lnOpts.length > 0 ? `dl-ln-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
@@ -946,7 +946,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                             onChange={() => {}} />
                         </td>
                         {/* doName */}
-                        <td style={{ ...cell, minWidth: '65px' }}>
+                        <td style={{ ...cell, minWidth: '80px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}-${sig.iec61850_do}`}
                             list={doOpts.length > 0 ? `dl-do-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
@@ -967,7 +967,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                             onChange={() => {}} />
                         </td>
                         {/* daName */}
-                        <td style={{ ...cell, minWidth: '65px' }}>
+                        <td style={{ ...cell, minWidth: '80px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}-${sig.iec61850_da}`}
                             list={daOpts.length > 0 ? `dl-da-${sig.id}` : undefined}
                             onFocus={onFocus} onBlur={e => {
@@ -1026,7 +1026,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       onChange={() => {}} />
                   </td>
                   {/* Composite reference */}
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '120px' }}>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '160px' }}>
                     {(() => {
                       const ied = sig.iec61850_ied;
                       const ld = sig.iec61850_ld;
