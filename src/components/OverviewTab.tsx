@@ -28,6 +28,7 @@ type SourceFilter = 'ALL' | 'IED' | 'HARDWIRED';
 const cell: React.CSSProperties = {
   padding: '5px 6px',
   borderBottom: '1px solid var(--line-muted)',
+  borderRight: '1px solid var(--line-muted)',
   fontSize: '12px',
   verticalAlign: 'middle',
 };
