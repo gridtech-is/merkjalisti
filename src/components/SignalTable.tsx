@@ -845,14 +845,42 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         <td style={{ ...cell, minWidth: '65px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}`}
                             list={doOpts.length > 0 ? `dl-do-${sig.id}` : undefined}
-                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_do: e.target.value || null }); }}
+                            onFocus={onFocus} onBlur={e => {
+                              onBlurReset(e);
+                              const doName = e.target.value || null;
+                              const patch: Partial<BaySignal> = { iec61850_do: doName };
+                              if (doName && model) {
+                                const match = model.find(f =>
+                                  (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
+                                  (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) &&
+                                  f.doName === doName
+                                );
+                                if (match?.cdc) patch.iec61850_cdc = match.cdc;
+                              }
+                              onUpdate(sig.id, patch);
+                            }}
                             onChange={() => {}} />
                         </td>
                         {/* daName */}
                         <td style={{ ...cell, minWidth: '65px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}`}
                             list={daOpts.length > 0 ? `dl-da-${sig.id}` : undefined}
-                            onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_da: e.target.value || null }); }}
+                            onFocus={onFocus} onBlur={e => {
+                              onBlurReset(e);
+                              const daName = e.target.value || null;
+                              const patch: Partial<BaySignal> = { iec61850_da: daName };
+                              if (daName && model) {
+                                const match = model.find(f =>
+                                  (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
+                                  (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) &&
+                                  (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
+                                  f.daName === daName
+                                );
+                                if (match?.fc) patch.iec61850_fc = match.fc;
+                                if (match?.cdc) patch.iec61850_cdc = match.cdc;
+                              }
+                              onUpdate(sig.id, patch);
+                            }}
                             onChange={() => {}} />
                         </td>
                       </>
@@ -860,7 +888,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   })()}
                   {/* FC */}
                   <td style={{ ...cell, minWidth: '45px' }}>
-                    <input style={eInput} defaultValue={sig.iec61850_fc ?? ''} key={`fc-${sig.id}`}
+                    <input style={eInput} defaultValue={sig.iec61850_fc ?? ''} key={`fc-${sig.id}-${sig.iec61850_fc}`}
                       onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_fc: e.target.value || null }); }}
                       onChange={() => {}} />
                   </td>
