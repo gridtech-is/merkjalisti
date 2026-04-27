@@ -2,15 +2,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
+import { useLibrary } from '../context/LibraryContext';
 import { listBays, loadBay } from '../services/bayService';
 import { loadStation } from '../services/stationService';
-import { exportAllBaysToExcel } from '../services/exportService';
+import { exportAllBaysToExcel, exportZenonAllBays } from '../services/exportService';
 import { Button } from './ui';
 import type { Bay, BaySignal, ProjectPhase, SignalState } from '../types';
 
 interface Props {
   projectId: string;
   projectName: string;
+  projectPhase: ProjectPhase;
 }
 
 type Source =
@@ -63,11 +65,11 @@ function buildRef(sig: BaySignal): string {
 
 export function OverviewTab({ projectId, projectName }: Props) {
   const { api } = useApi();
+  const { signalStates: states, loading: libLoading } = useLibrary();
   const navigate = useNavigate();
 
   const [bays, setBays] = useState<Bay[]>([]);
   const [stationSignals, setStationSignals] = useState<BaySignal[]>([]);
-  const [states, setStates] = useState<SignalState[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
@@ -86,11 +88,9 @@ export function OverviewTab({ projectId, projectName }: Props) {
         return full;
       }),
       loadStation(api, projectId),
-      api.readJson<SignalState[]>('data/signal_states.json'),
-    ]).then(([fullBays, stationFile, { data: stateData }]) => {
+    ]).then(([fullBays, stationFile]) => {
       setBays(fullBays);
       setStationSignals(stationFile.station.signals);
-      setStates(stateData);
     }).catch(() => setError('Gat ekki hlaðið gögnum. Reyndu aftur.'))
       .finally(() => setLoading(false));
   }, [api, projectId]);
@@ -149,6 +149,15 @@ export function OverviewTab({ projectId, projectName }: Props) {
     exportAllBaysToExcel([...bays, syntheticStationBay], projectName);
   };
 
+  const handleExportZenon = () => {
+    const syntheticStationBay: Bay = {
+      id: 'station', voltage_level: '', bay_name: 'Stöðvarmerki',
+      display_id: 'STÖÐ', description: null, equipment_ids: [],
+      signals: stationSignals, status: 'DRAFT', review: null,
+    };
+    exportZenonAllBays([...bays, syntheticStationBay], projectName, states);
+  };
+
   const toggleBayFilter = (key: string) => {
     setSelectedBays(prev => {
       const next = new Set(prev);
@@ -168,11 +177,44 @@ export function OverviewTab({ projectId, projectName }: Props) {
     { key: 'station', label: 'Stöð' },
   ];
 
-  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (loading || libLoading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (error) return <p style={{ color: 'var(--danger)' }}>{error}</p>;
 
   return (
     <div>
+      {/* Bay tab strip — navigate to individual bay */}
+      {bays.length > 0 && (
+        <div style={{
+          display: 'flex', overflowX: 'auto', gap: '2px',
+          borderBottom: '1px solid var(--line)',
+          marginBottom: 'var(--space-4)',
+        }}>
+          {bays.map(b => {
+            const flagCount = b.signals.filter(s => s.review_flagged).length;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => navigate(`/projects/${projectId}/bays/${b.id}`)}
+                style={{
+                  flexShrink: 0, padding: '6px 14px', fontSize: '12px', fontWeight: 400,
+                  cursor: 'pointer', background: 'none', border: 'none',
+                  borderBottom: '2px solid transparent',
+                  color: 'var(--text-secondary)', whiteSpace: 'nowrap', marginBottom: '-1px',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'; (e.currentTarget as HTMLButtonElement).style.borderBottomColor = 'color-mix(in srgb, var(--accent) 40%, transparent)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLButtonElement).style.borderBottomColor = 'transparent'; }}
+              >
+                {b.display_id}
+                {flagCount > 0 && (
+                  <span style={{ marginLeft: '5px', fontSize: '10px', color: 'var(--danger)', fontWeight: 700 }}>💬{flagCount}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filter row 1 */}
       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
         <input type="text" placeholder="Leit — kóði, nafn, IEC address..."
@@ -240,6 +282,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
           Sýnd {filtered.length} af {rows.length} merkjum
         </span>
         <Button size="sm" variant="ghost" onClick={handleExport} disabled={rows.length === 0}>↓ Excel</Button>
+        <Button size="sm" variant="ghost" onClick={handleExportZenon} disabled={rows.length === 0}>↓ zenon</Button>
       </div>
 
       {/* Table */}

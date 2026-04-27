@@ -342,6 +342,7 @@ export function ProjectView() {
   // IED models
   const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
   const [modelUploading, setModelUploading] = useState<string | null>(null);
+  const [filterIecInvalid, setFilterIecInvalid] = useState(false);
   const [iedMismatch, setIedMismatch] = useState<{ eq: Equipment; fcda: import('../types').IedFcda[]; iedName: string } | null>(null);
 
   // Save template modal
@@ -371,6 +372,15 @@ export function ProjectView() {
       setLoadError('Gat ekki hlaðið verkefni. Það gæti verið ófullkomið eða eytt.');
     }).finally(() => setLoading(false));
   }, [api, projectId]);
+
+  // Re-fetch bays when Reitir tab is opened (catches updates from BayView)
+  useEffect(() => {
+    if (tab !== 'bays' || !projectId || loading) return;
+    listBays(api, projectId).then(bayList => {
+      setBays(bayList);
+      setAllBaySignals(bayList.flatMap(b => b.signals));
+    }).catch(() => {});
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When IED template changes, auto-fill description
   useEffect(() => {
@@ -769,11 +779,41 @@ export function ProjectView() {
       </div>
 
       {/* Reitir */}
-      {tab === 'bays' && (
+      {tab === 'bays' && (() => {
+        // Build code→model map (iedModels is keyed by equipment.id, signals use equipment.code)
+        const codeToModel = new Map<string, IedFcda[]>();
+        equipment.forEach(eq => { const m = iedModels.get(eq.id); if (m) codeToModel.set(eq.code, m); });
+
+        const bayIecInvalidCount = (bay: Bay) => bay.signals.filter(sig => {
+          const model = codeToModel.get(sig.iec61850_ied ?? '');
+          if (!model || !sig.iec61850_ln) return false;
+          return model.filter(f =>
+            (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
+            (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
+            f.lnClass === sig.iec61850_ln &&
+            (!sig.iec61850_ln_inst || f.lnInst === sig.iec61850_ln_inst) &&
+            (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
+            (!sig.iec61850_da || f.daName === sig.iec61850_da)
+          ).length === 0;
+        }).length;
+
+        const totalIecInvalid = bays.reduce((n, b) => n + bayIecInvalidCount(b), 0);
+        const visibleBays = filterIecInvalid ? bays.filter(b => bayIecInvalidCount(b) > 0) : bays;
+
+        return (
         <div>
           <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
             {bays.length > 0 && bays.every(b => b.status === 'LOCKED') && (
               <span style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 600 }}>✓ Allt læst</span>
+            )}
+            {totalIecInvalid > 0 && (
+              <button type="button" onClick={() => setFilterIecInvalid(f => !f)} style={{
+                fontSize: '12px', padding: '3px 10px', cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: `1px solid ${filterIecInvalid ? 'var(--warn, #f59e0b)' : 'var(--line)'}`,
+                background: filterIecInvalid ? 'color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent)' : 'var(--surface-alt)',
+                color: filterIecInvalid ? 'var(--warn, #f59e0b)' : 'var(--text-secondary)',
+                fontWeight: filterIecInvalid ? 700 : 400,
+              }} title="Sía reitir með IEC 61850 villur">⚠ {totalIecInvalid} IEC villa</button>
             )}
             {bays.some(b => b.status === 'DRAFT') && (
               <Button variant="ghost" size="sm" onClick={handleSendAllForReview} disabled={sendingReview}>→ Senda alla í yfirferð</Button>
@@ -781,15 +821,16 @@ export function ProjectView() {
             <Button variant="ghost" size="sm" onClick={() => exportAllBaysToExcel(bays, project?.name ?? 'verkefni')}>↓ Excel (allt)</Button>
             <Button onClick={() => navigate(`/projects/${projectId}/bays/new`)}>+ Nýr reitur</Button>
           </div>
-          {bays.length === 0 ? (
+          {visibleBays.length === 0 ? (
             <Card style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--muted)' }}>
-              Engir reitir enn. Bættu við nýjum reit.
+              {filterIecInvalid ? 'Engir reitir með IEC 61850 villur.' : 'Engir reitir enn. Bættu við nýjum reit.'}
             </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {bays.map(bay => {
+              {visibleBays.map(bay => {
                 const statusColor = bay.status === 'LOCKED' ? 'var(--success)' : bay.status === 'IN_REVIEW' ? 'var(--accent)' : 'var(--warn)';
                 const statusLabel = bay.status === 'LOCKED' ? 'LÆST' : bay.status === 'IN_REVIEW' ? 'Í YFIRFERÐ' : 'DRAFT';
+                const iecCount = bayIecInvalidCount(bay);
                 return (
                   <Card key={bay.id} padding="var(--space-4) var(--space-5)" style={{ cursor: 'pointer' }}
                     onClick={() => navigate(`/projects/${projectId}/bays/${bay.id}`)}>
@@ -799,6 +840,16 @@ export function ProjectView() {
                         <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
                           {bay.description && <span style={{ marginRight: '6px', color: 'var(--text-secondary)' }}>{bay.description}</span>}
                           {bay.signals.length} merki · {new Set(bay.signals.map(s => s.equipment_code)).size} tæki
+                          {bay.signals.some(s => s.review_flagged) && (
+                            <span style={{ marginLeft: '8px', color: 'var(--danger)', fontWeight: 600 }}>
+                              · 💬 {bay.signals.filter(s => s.review_flagged).length} til skoðunar
+                            </span>
+                          )}
+                          {iecCount > 0 && (
+                            <span style={{ marginLeft: '8px', color: 'var(--warn, #f59e0b)', fontWeight: 600 }}>
+                              · ⚠ {iecCount} IEC villa
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -830,7 +881,8 @@ export function ProjectView() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Tæki */}
       {tab === 'equipment' && (
@@ -1148,7 +1200,7 @@ export function ProjectView() {
         />
       )}
       {tab === 'overview' && projectId && project && (
-        <OverviewTab projectId={projectId} projectName={project.name} />
+        <OverviewTab projectId={projectId} projectName={project.name} projectPhase={project.phase} />
       )}
       {tab === 'changelog' && projectId && <ChangelogTab projectId={projectId} />}
     </div>
