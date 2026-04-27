@@ -22,7 +22,7 @@ type SourceFilter = 'ALL' | 'IED' | 'HARDWIRED';
 
 export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
   const { api } = useApi();
-  const { signalStates: states, loading: libLoading } = useLibrary();
+  const { signalStates: states, signalLibrary: library, loading: libLoading } = useLibrary();
   const navigate = useNavigate();
 
   const [bayFiles, setBayFiles] = useState<BayFile[]>([]);
@@ -97,6 +97,13 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
     dirtyBayIdsRef.current.add(bayId);
     setIsDirty(true);
   }, []);
+
+  const bayUpdateHandlers = useMemo(
+    () => new Map(bayFiles.map(f => [f.bay.id, handleUpdate(f.bay.id)])),
+    [bayFiles, handleUpdate]
+  );
+
+  const noop = useCallback(() => {}, []);
 
   const handleExport = () => {
     const syntheticStationBay: Bay = {
@@ -306,11 +313,12 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
           <SignalTable
             signals={signals}
             equipment={equipment}
+            library={library}
             states={states}
             bayDisplayId={file.bay.display_id}
             hideToolbar
             showFatSat
-            onUpdate={handleUpdate(file.bay.id)}
+            onUpdate={bayUpdateHandlers.get(file.bay.id)!}
           />
         </div>
       ))}
@@ -334,7 +342,7 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
             bayDisplayId="STÖÐ"
             hideToolbar
             showFatSat
-            onUpdate={() => {}}
+            onUpdate={noop}
           />
         </div>
       )}
