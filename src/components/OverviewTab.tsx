@@ -1,13 +1,14 @@
 // src/components/OverviewTab.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
 import { useLibrary } from '../context/LibraryContext';
-import { listBays, loadBay } from '../services/bayService';
+import { listBayFiles, saveBay, type BayFile } from '../services/bayService';
 import { loadStation } from '../services/stationService';
+import { useAutoCommit } from '../github/useAutoCommit';
 import { exportAllBaysToExcel, exportZenonAllBays } from '../services/exportService';
 import { Button } from './ui';
-import type { Bay, BaySignal, ProjectPhase, SignalState } from '../types';
+import type { Bay, BaySignal, Equipment, ProjectPhase, SignalState } from '../types';
 
 interface Props {
   projectId: string;
@@ -63,12 +64,22 @@ function buildRef(sig: BaySignal): string {
   return ied ? `${ied}${ref}` : ref;
 }
 
-export function OverviewTab({ projectId, projectName }: Props) {
+export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
   const { api } = useApi();
   const { signalStates: states, loading: libLoading } = useLibrary();
   const navigate = useNavigate();
 
-  const [bays, setBays] = useState<Bay[]>([]);
+  const [bayFiles, setBayFiles] = useState<BayFile[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  void equipment; // used in Task 5
+  const [isDirty, setIsDirty] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  void lastSaved; // used in Task 5
+
+  const bayFilesRef = useRef<BayFile[]>([]);
+  bayFilesRef.current = bayFiles;
+  const dirtyBayIdsRef = useRef<Set<string>>(new Set());
+
   const [stationSignals, setStationSignals] = useState<BaySignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,17 +94,48 @@ export function OverviewTab({ projectId, projectName }: Props) {
 
   useEffect(() => {
     Promise.all([
-      listBays(api, projectId).then(async (baysMeta) => {
-        const full = await Promise.all(baysMeta.map(b => loadBay(api, projectId, b.id).then(f => f.bay)));
-        return full;
-      }),
+      listBayFiles(api, projectId),
       loadStation(api, projectId),
-    ]).then(([fullBays, stationFile]) => {
-      setBays(fullBays);
+      api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
+    ]).then(([files, stationFile, { data: eq }]) => {
+      setBayFiles(files);
       setStationSignals(stationFile.station.signals);
+      setEquipment(eq);
     }).catch(() => setError('Gat ekki hlaðið gögnum. Reyndu aftur.'))
       .finally(() => setLoading(false));
   }, [api, projectId]);
+
+  const commitAll = async () => {
+    const toSave = bayFilesRef.current.filter(f => dirtyBayIdsRef.current.has(f.bay.id));
+    if (toSave.length === 0) return;
+    const updated = await Promise.all(
+      toSave.map(f => saveBay(api, projectId, f, projectPhase))
+    );
+    setBayFiles(prev => {
+      const map = new Map(updated.map(f => [f.bay.id, f]));
+      return prev.map(f => map.get(f.bay.id) ?? f);
+    });
+    dirtyBayIdsRef.current.clear();
+    setIsDirty(false);
+    setLastSaved(new Date());
+  };
+
+  useAutoCommit(isDirty, commitAll);
+
+  // handleUpdate is wired up in Task 5 (per-bay SignalTable sections)
+  const handleUpdate = useCallback((bayId: string) => (signalId: string, patch: Partial<BaySignal>) => {
+    setBayFiles(prev => prev.map(f => {
+      if (f.bay.id !== bayId) return f;
+      const bay: Bay = {
+        ...f.bay,
+        signals: f.bay.signals.map(s => s.id === signalId ? { ...s, ...patch } : s),
+      };
+      return { ...f, bay };
+    }));
+    dirtyBayIdsRef.current.add(bayId);
+    setIsDirty(true);
+  }, []);
+  void handleUpdate; // used in Task 5
 
   const stateIndex = useMemo(() => {
     const m = new Map<string, SignalState>();
@@ -102,9 +144,9 @@ export function OverviewTab({ projectId, projectName }: Props) {
   }, [states]);
 
   const rows: Row[] = useMemo(() => {
-    const bayRows: Row[] = bays.flatMap(bay =>
-      bay.signals.map(signal => ({
-        source: { kind: 'bay' as const, bayId: bay.id, displayId: bay.display_id, bayName: bay.bay_name },
+    const bayRows: Row[] = bayFiles.flatMap(f =>
+      f.bay.signals.map(signal => ({
+        source: { kind: 'bay' as const, bayId: f.bay.id, displayId: f.bay.display_id, bayName: f.bay.bay_name },
         signal,
       }))
     );
@@ -113,7 +155,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
       signal,
     }));
     return [...bayRows, ...stationRows];
-  }, [bays, stationSignals]);
+  }, [bayFiles, stationSignals]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -146,7 +188,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
       display_id: 'STÖÐ', description: null, equipment_ids: [],
       signals: stationSignals, status: 'DRAFT', review: null,
     };
-    exportAllBaysToExcel([...bays, syntheticStationBay], projectName);
+    exportAllBaysToExcel([...bayFiles.map(f => f.bay), syntheticStationBay], projectName);
   };
 
   const handleExportZenon = () => {
@@ -155,7 +197,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
       display_id: 'STÖÐ', description: null, equipment_ids: [],
       signals: stationSignals, status: 'DRAFT', review: null,
     };
-    exportZenonAllBays([...bays, syntheticStationBay], projectName, states);
+    exportZenonAllBays([...bayFiles.map(f => f.bay), syntheticStationBay], projectName, states);
   };
 
   const toggleBayFilter = (key: string) => {
@@ -173,7 +215,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
   };
 
   const bayKeys = [
-    ...bays.map(b => ({ key: b.id, label: b.display_id })),
+    ...bayFiles.map(f => ({ key: f.bay.id, label: f.bay.display_id })),
     { key: 'station', label: 'Stöð' },
   ];
 
@@ -183,19 +225,19 @@ export function OverviewTab({ projectId, projectName }: Props) {
   return (
     <div>
       {/* Bay tab strip — navigate to individual bay */}
-      {bays.length > 0 && (
+      {bayFiles.length > 0 && (
         <div style={{
           display: 'flex', overflowX: 'auto', gap: '2px',
           borderBottom: '1px solid var(--line)',
           marginBottom: 'var(--space-4)',
         }}>
-          {bays.map(b => {
-            const flagCount = b.signals.filter(s => s.review_flagged).length;
+          {bayFiles.map(f => {
+            const flagCount = f.bay.signals.filter(s => s.review_flagged).length;
             return (
               <button
-                key={b.id}
+                key={f.bay.id}
                 type="button"
-                onClick={() => navigate(`/projects/${projectId}/bays/${b.id}`)}
+                onClick={() => navigate(`/projects/${projectId}/bays/${f.bay.id}`)}
                 style={{
                   flexShrink: 0, padding: '6px 14px', fontSize: '12px', fontWeight: 400,
                   cursor: 'pointer', background: 'none', border: 'none',
@@ -205,7 +247,7 @@ export function OverviewTab({ projectId, projectName }: Props) {
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'; (e.currentTarget as HTMLButtonElement).style.borderBottomColor = 'color-mix(in srgb, var(--accent) 40%, transparent)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLButtonElement).style.borderBottomColor = 'transparent'; }}
               >
-                {b.display_id}
+                {f.bay.display_id}
                 {flagCount > 0 && (
                   <span style={{ marginLeft: '5px', fontSize: '10px', color: 'var(--danger)', fontWeight: 700 }}>💬{flagCount}</span>
                 )}
