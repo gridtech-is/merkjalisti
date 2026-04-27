@@ -1,6 +1,6 @@
 // src/services/bayService.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createBay, listBays, renameStation } from './bayService';
+import { createBay, listBays, listBayFiles, renameStation } from './bayService';
 import type { Bay } from '../types';
 
 const mockApi = {
@@ -44,6 +44,42 @@ describe('listBays', () => {
     const result = await listBays(mockApi as never, 'proj-123');
     expect(result).toHaveLength(1);
     expect(result[0].display_id).toBe('55E00');
+  });
+});
+
+describe('listBayFiles', () => {
+  it('returns BayFile[] with sha for each non-deleted bay', async () => {
+    const bayId = '550e8400-e29b-41d4-a716-446655440002';
+    mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
+    mockApi.readJson.mockResolvedValue({
+      data: {
+        id: bayId, voltage_level: 'J', bay_name: 'E00',
+        display_id: '55E00', description: null, equipment_ids: [],
+        signals: [], status: 'DRAFT', review: null,
+      } as Bay,
+      sha: 'sha-abc',
+    });
+
+    const result = await listBayFiles(mockApi as never, 'proj-123');
+    expect(result).toHaveLength(1);
+    expect(result[0].bay.display_id).toBe('55E00');
+    expect(result[0].sha).toBe('sha-abc');
+  });
+
+  it('excludes DELETED bays', async () => {
+    const bayId = '550e8400-e29b-41d4-a716-446655440003';
+    mockApi.listDirectory.mockResolvedValue([`${bayId}.json`]);
+    mockApi.readJson.mockResolvedValue({
+      data: {
+        id: bayId, voltage_level: 'J', bay_name: 'E99',
+        display_id: '55E99', description: null, equipment_ids: [],
+        signals: [], status: 'DELETED', review: null,
+      } as Bay,
+      sha: 'sha-del',
+    });
+
+    const result = await listBayFiles(mockApi as never, 'proj-123');
+    expect(result).toHaveLength(0);
   });
 });
 

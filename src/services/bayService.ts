@@ -75,6 +75,36 @@ export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]
     .filter(b => b.status !== 'DELETED');
 }
 
+export async function listBayFiles(api: GitHubApi, projectId: string): Promise<BayFile[]> {
+  let entries: string[];
+  try {
+    entries = await api.listDirectory(`projects/${projectId}/bays`);
+  } catch {
+    return [];
+  }
+  const jsonFiles = entries.filter(e => e.endsWith('.json'));
+  const results = await Promise.allSettled(
+    jsonFiles.map(f => api.readJson<Bay>(`projects/${projectId}/bays/${f}`))
+  );
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ data: Bay; sha: string }> => r.status === 'fulfilled')
+    .map(r => {
+      const data = r.value.data;
+      const bay: Bay = {
+        ...data,
+        status: data.status ?? ('DRAFT' as const),
+        review: data.review ?? null,
+        signals: data.signals.map(s => ({
+          ...s,
+          review_flagged: s.review_flagged ?? false,
+          review_comment: s.review_comment ?? null,
+        })),
+      };
+      return { bay, sha: r.value.sha };
+    })
+    .filter(f => f.bay.status !== 'DELETED');
+}
+
 export async function loadBay(api: GitHubApi, projectId: string, bayId: string): Promise<BayFile> {
   const path = `projects/${projectId}/bays/${bayId}.json`;
   const { data, sha } = await api.readJson<Bay>(path);
