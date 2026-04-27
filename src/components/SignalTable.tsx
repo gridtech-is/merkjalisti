@@ -1,6 +1,7 @@
 // src/components/SignalTable.tsx
-import React, { useState } from 'react';
+import React, { memo, useMemo, useState, useDeferredValue } from 'react';
 import { Button } from './ui';
+import { SignalCommentsModal } from './SignalCommentsModal';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType, IedFcda } from '../types';
 
 const STAT_CLASSES = new Set(['LPHD', 'LGOS', 'LSVS', 'LCCH', 'LTMS', 'LTRK', 'LLN0']);
@@ -77,15 +78,26 @@ interface Props {
   maxDatasetSize?: number;
   onUpdate: (signalId: string, patch: Partial<BaySignal>) => void;
   onBatchUpdate?: (patches: { id: string; patch: Partial<BaySignal> }[]) => void;
-  onDelete: (signalId: string) => void;
+  onDelete?: (signalId: string) => void;
+  onBatchDelete?: (ids: string[]) => void;
   onDuplicate?: (ids: string[], at: number, count: number) => void;
   onReorder?: (newOrder: string[]) => void;
+  onImmediateSave?: () => Promise<void>;
+  hideToolbar?: boolean;
+  showFatSat?: boolean;
 }
 
 const SOURCE_OPTIONS: { value: SourceType; label: string }[] = [
   { value: 'IED', label: 'IED' },
   { value: 'HARDWIRED', label: 'Harðvíraður' },
 ];
+
+const EQ_TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
+
+const normSearch = (s: string) => s.toLowerCase()
+  .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o')
+  .replace(/ú/g, 'u').replace(/ý/g, 'y').replace(/ð/g, 'd').replace(/þ/g, 'th')
+  .replace(/æ/g, 'ae').replace(/ö/g, 'o');
 
 const cell: React.CSSProperties = {
   padding: '5px 6px',
@@ -133,23 +145,22 @@ const eSelect: React.CSSProperties = {
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'var(--accent)');
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
-export function SignalTable({ signals, equipment, library = [], states = [], bayDisplayId = '', reviewMode = false, iedModels, maxDatasetSize = 1000, onUpdate, onBatchUpdate, onDelete, onDuplicate, onReorder }: Props) {
-  // Build lookup index: code → library entry
-  const libraryIndex = new Map(library.filter(e => e.code).map(e => [e.code!, e]));
-  // Build state index: id → SignalState
-  const stateIndex = new Map(states.map(s => [s.id, s]));
+function SignalTableInner({ signals, equipment, library = [], states = [], bayDisplayId = '', iedModels, maxDatasetSize = 1000, onUpdate, onBatchUpdate, onDelete, onBatchDelete, onDuplicate, onReorder, onImmediateSave, hideToolbar = false, showFatSat = false }: Props) {
+  const libraryIndex = useMemo(() => new Map(library.filter(e => e.code).map(e => [e.code!, e])), [library]);
+  const stateIndex = useMemo(() => new Map(states.map(s => [s.id, s])), [states]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stateLang, setStateLang] = useState<'is' | 'en'>('is');
   const [filterEq, setFilterEq] = useState('');
   const [filterText, setFilterText] = useState('');
-  const [flaggingId, setFlaggingId] = useState<string | null>(null);
+  const [filterComments, setFilterComments] = useState(false);
+  const [filterIecInvalid, setFilterIecInvalid] = useState(false);
+  const deferredSearch = useDeferredValue(filterText);
+  const [commentSignalId, setCommentSignalId] = useState<string | null>(null);
   const [datasetPreview, setDatasetPreview] = useState<{
     fills: { id: string; patch: Partial<BaySignal>; signalName: string }[];
     corrections: { id: string; patch: Partial<BaySignal>; signalName: string; from: string }[];
   } | null>(null);
   const [includeCorrections, setIncludeCorrections] = useState(false);
-  const [flagComment, setFlagComment] = useState('');
-  const [popupId, setPopupId] = useState<string | null>(null);
   const [fcdaPickerId, setFcdaPickerId] = useState<string | null>(null);
   const [fcdaSearch, setFcdaSearch] = useState('');
   // Block edit state
@@ -172,6 +183,63 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   const [duplicateAt, setDuplicateAt] = useState('');
   const [duplicateCount, setDuplicateCount] = useState('1');
 
+  const searchTokens = useMemo(() => normSearch(deferredSearch).split(/\s+/).filter(Boolean), [deferredSearch]);
+  const datasetOpts = useMemo(() => ([...new Set(signals.map(s => s.iec61850_dataset).filter(Boolean))].sort()) as string[], [signals]);
+  const commentCount = useMemo(() => signals.filter(s => s.review_flagged).length, [signals]);
+  const eqCodesInSignals = useMemo(() =>
+    [...new Set(signals.map(s => s.equipment_code).filter(Boolean))].sort((a, b) => {
+      const ea = equipment.find(e => e.code === a);
+      const eb = equipment.find(e => e.code === b);
+      const ta = ea?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[ea?.type ?? 'Annað'] ?? 6);
+      const tb = eb?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[eb?.type ?? 'Annað'] ?? 6);
+      if (ta !== tb) return ta - tb;
+      return a.localeCompare(b, 'is');
+    }), [signals, equipment]);
+  const allEqCodes = useMemo(() =>
+    [...equipment].sort((a, b) => {
+      const ta = a.category === 'ied' ? 7 : (EQ_TYPE_ORDER[a.type ?? 'Annað'] ?? 6);
+      const tb = b.category === 'ied' ? 7 : (EQ_TYPE_ORDER[b.type ?? 'Annað'] ?? 6);
+      if (ta !== tb) return ta - tb;
+      return a.code.localeCompare(b.code, 'is');
+    }).map(e => e.code), [equipment]);
+  const iedOptions = useMemo(() => equipment.filter(e => e.category === 'ied'), [equipment]);
+  const iecInvalidIds = useMemo(() => new Set<string>(
+    iedModels ? signals.filter(sig => {
+      const model = sig.iec61850_ied ? iedModels.get(sig.iec61850_ied) : undefined;
+      if (!model || !sig.iec61850_ln) return false;
+      return model.filter(f =>
+        (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
+        (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
+        f.lnClass === sig.iec61850_ln &&
+        (!sig.iec61850_ln_inst || f.lnInst === sig.iec61850_ln_inst) &&
+        (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
+        (!sig.iec61850_da || f.daName === sig.iec61850_da)
+      ).length === 0;
+    }).map(s => s.id) : []
+  ), [signals, iedModels]);
+  const visibleSignals = useMemo(() => signals.filter(s => {
+    if (filterEq && s.equipment_code !== filterEq) return false;
+    if (filterComments && !s.review_flagged) return false;
+    if (filterIecInvalid && !iecInvalidIds.has(s.id)) return false;
+    if (searchTokens.length > 0) {
+      const code = [bayDisplayId, s.equipment_code, s.signal_name].filter(Boolean).join('_');
+      const lnPart = `${s.iec61850_ln_prefix ?? ''}${s.iec61850_ln ?? ''}${s.iec61850_ln_inst ?? ''}`;
+      const doPart = [s.iec61850_do, s.iec61850_da].filter(Boolean).join('.');
+      const ref = [s.iec61850_ld, lnPart].filter(Boolean).join('/') + (doPart ? `.${doPart}` : '');
+      const stateConcat = `${s.state_id ?? ''}${s.iec61850_ln ?? ''}${s.iec61850_ln_inst ?? ''}`;
+      const fields = [
+        s.group_label ?? '', s.equipment_code, s.signal_name, code,
+        s.name_is, s.name_en ?? '',
+        s.iec61850_ied ?? '', s.iec61850_ld ?? '', s.iec61850_ln ?? '',
+        s.iec61850_ln_prefix ?? '', s.iec61850_ln_inst ?? '',
+        s.iec61850_do ?? '', s.iec61850_da ?? '', s.iec61850_dataset ?? '',
+        s.state_id ?? '', ref, stateConcat,
+      ].map(normSearch);
+      if (!searchTokens.every(t => fields.some(f => f.includes(t)))) return false;
+    }
+    return true;
+  }), [signals, filterEq, filterComments, filterIecInvalid, searchTokens, iecInvalidIds, bayDisplayId]);
+
   if (signals.length === 0) {
     return (
       <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 'var(--space-8)' }}>
@@ -179,8 +247,6 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
       </p>
     );
   }
-
-  const datasetOpts = [...new Set(signals.map(s => s.iec61850_dataset).filter(Boolean))].sort() as string[];
 
   const allSelected = selected.size === signals.length;
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(signals.map(s => s.id)));
@@ -265,46 +331,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
     setDragOverId(null);
   };
 
-  const EQ_TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
-  const eqCodesInSignals = [...new Set(signals.map(s => s.equipment_code).filter(Boolean))].sort((a, b) => {
-    const ea = equipment.find(e => e.code === a);
-    const eb = equipment.find(e => e.code === b);
-    const ta = ea?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[ea?.type ?? 'Annað'] ?? 6);
-    const tb = eb?.category === 'ied' ? 7 : (EQ_TYPE_ORDER[eb?.type ?? 'Annað'] ?? 6);
-    if (ta !== tb) return ta - tb;
-    return a.localeCompare(b, 'is');
-  });
-  const visibleSignals = signals.filter(s => {
-    if (filterEq && s.equipment_code !== filterEq) return false;
-    if (filterText) {
-      const q = filterText.toLowerCase();
-      const code = [bayDisplayId, s.equipment_code, s.signal_name].filter(Boolean).join('_').toLowerCase();
-      return (
-        (s.group_label ?? '').toLowerCase().includes(q) ||
-        s.equipment_code.toLowerCase().includes(q) ||
-        s.signal_name.toLowerCase().includes(q) ||
-        code.includes(q) ||
-        s.name_is.toLowerCase().includes(q) ||
-        (s.name_en ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_ied ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_ld ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_ln ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_ln_prefix ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_do ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_da ?? '').toLowerCase().includes(q) ||
-        (s.iec61850_dataset ?? '').toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  const allEqCodes = [...equipment].sort((a, b) => {
-    const ta = a.category === 'ied' ? 7 : (EQ_TYPE_ORDER[a.type ?? 'Annað'] ?? 6);
-    const tb = b.category === 'ied' ? 7 : (EQ_TYPE_ORDER[b.type ?? 'Annað'] ?? 6);
-    if (ta !== tb) return ta - tb;
-    return a.code.localeCompare(b.code, 'is');
-  }).map(e => e.code);
-  const iedOptions = equipment.filter(e => e.category === 'ied');
+  const iecInvalidCount = iecInvalidIds.size;
   const blockInputStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
     borderRadius: 'var(--radius-sm)', color: 'var(--text)',
@@ -315,6 +342,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
   return (
     <div>
       {/* Filter */}
+      {!hideToolbar && (
       <div style={{ marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         {eqCodesInSignals.length > 1 && (
           <select
@@ -344,19 +372,46 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
           onBlur={e => (e.target.style.borderColor = 'var(--line)')}
         />
-        {(filterText || filterEq) && (
+        {commentCount > 0 && (
           <button
             type="button"
-            onClick={() => { setFilterText(''); setFilterEq(''); }}
+            onClick={() => setFilterComments(f => !f)}
+            style={{
+              fontSize: '12px', padding: '3px 10px', cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', border: `1px solid ${filterComments ? 'var(--danger)' : 'var(--line)'}`,
+              background: filterComments ? 'color-mix(in srgb, var(--danger) 12%, transparent)' : 'var(--surface-alt)',
+              color: filterComments ? 'var(--danger)' : 'var(--text-secondary)',
+              fontWeight: filterComments ? 700 : 400,
+            }}
+          >💬 {commentCount}</button>
+        )}
+        {iecInvalidCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilterIecInvalid(f => !f)}
+            style={{
+              fontSize: '12px', padding: '3px 10px', cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', border: `1px solid ${filterIecInvalid ? 'var(--warn, #f59e0b)' : 'var(--line)'}`,
+              background: filterIecInvalid ? 'color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent)' : 'var(--surface-alt)',
+              color: filterIecInvalid ? 'var(--warn, #f59e0b)' : 'var(--text-secondary)',
+              fontWeight: filterIecInvalid ? 700 : 400,
+            }}
+            title="Sía merki sem eru ekki til í IED módeli"
+          >⚠ {iecInvalidCount}</button>
+        )}
+        {(filterText || filterEq || filterComments || filterIecInvalid) && (
+          <button
+            type="button"
+            onClick={() => { setFilterText(''); setFilterEq(''); setFilterComments(false); setFilterIecInvalid(false); }}
             style={{ fontSize: '12px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
           >✕ Hreinsa</button>
         )}
-        {(filterText || filterEq) && (
+        {(filterText || filterEq || filterComments || filterIecInvalid) && (
           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
             {visibleSignals.length} / {signals.length}
           </span>
         )}
-        {!reviewMode && onBatchUpdate && signals.length > 0 && (
+        {onBatchUpdate && signals.length > 0 && (
           <button
             type="button"
             onClick={() => {
@@ -379,6 +434,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           >↻ Fylla Dataset / RCB</button>
         )}
       </div>
+      )}
       {/* Block edit toolbar */}
       {selected.size > 0 && (
         <div style={{
@@ -474,6 +530,13 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 </Button>
               </div>
             )}
+            {onBatchDelete && (
+              <Button size="sm" variant="danger" onClick={() => {
+                if (!confirm(`Eyða ${selected.size} merkjum?`)) return;
+                onBatchDelete([...selected]);
+                setSelected(new Set());
+              }}>Eyða völdum</Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Hætta við</Button>
           </div>
         </div>
@@ -505,6 +568,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
               <th style={head}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
               </th>
+              <th style={{ ...head, width: '44px' }}></th>
               <th style={{ ...head, width: '80px' }}>Hópur</th>
               {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
                 <th key={h} style={head}>{h}</th>
@@ -517,11 +581,17 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 IEC 61850
               </th>
               <th style={head}>Fasi</th>
-              {reviewMode && <th style={head}></th>}
-              <th style={head}></th>
+              {showFatSat && (
+                <>
+                  <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--success)', color: 'var(--success)', textAlign: 'center' }}>FAT</th>
+                  <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--warning, #f59e0b)', color: 'var(--warning, #f59e0b)', textAlign: 'center' }}>SAT</th>
+                </>
+              )}
+              {onDelete !== undefined && <th style={head}></th>}
             </tr>
             <tr>
               <th style={{ ...head, top: '33px' }}></th>
+              <th style={{ ...head, top: '33px', width: '44px' }}></th>
               <th style={{ ...head, top: '33px', fontSize: '10px' }}></th>
               {['#', 'Tæki', 'Merki', 'Kóði', 'Texti'].map(h => (
                 <th key={`s-${h}`} style={{ ...head, top: '33px', fontSize: '10px' }}></th>
@@ -536,13 +606,23 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                 <th key={`ii-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--accent)' : undefined }}>{h}</th>
               ))}
               <th style={{ ...head, top: '33px' }}></th>
-              {reviewMode && <th style={{ ...head, top: '33px' }}></th>}
-              <th style={{ ...head, top: '33px' }}></th>
+              {showFatSat && (
+                <>
+                  {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
+                    <th key={`fat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--success)' : undefined }}>{h}</th>
+                  ))}
+                  {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
+                    <th key={`sat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--warning, #f59e0b)' : undefined }}>{h}</th>
+                  ))}
+                </>
+              )}
+              {onDelete !== undefined && <th style={{ ...head, top: '33px' }}></th>}
             </tr>
           </thead>
           <tbody>
             {visibleSignals.map((sig, i) => {
               const isSelected = selected.has(sig.id);
+              const iecInvalid = iecInvalidIds.has(sig.id);
               return (
                 <React.Fragment key={sig.id}>
                   {!!sig.group_label && (
@@ -569,7 +649,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                     onDrop={() => handleDrop(sig.id)}
                     onDragEnd={() => { setDragId(null); setDragOverId(null); }}
                     style={{
-                      background: dragOverId === sig.id ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)',
+                      background: dragOverId === sig.id ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : iecInvalid ? 'color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent)' : sig.review_flagged ? 'color-mix(in srgb, var(--danger) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)',
                       opacity: dragId === sig.id ? 0.4 : 1,
                       cursor: onReorder ? 'grab' : 'default',
                       borderTop: dragOverId === sig.id ? '2px solid var(--accent)' : undefined,
@@ -578,6 +658,22 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   <td style={{ ...cell, width: '32px', textAlign: 'center' }}
                     onClick={e => handleRowSelect(sig.id, i, e)}>
                     <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer', pointerEvents: 'none' }} />
+                  </td>
+                  <td style={{ ...cell, width: '44px', textAlign: 'center' }}>
+                    {(() => {
+                      const count = (sig.review_comments?.length ?? 0) + ((!sig.review_comments?.length && sig.review_comment) ? 1 : 0);
+                      const flagged = sig.review_flagged;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setCommentSignalId(sig.id)}
+                          style={{ position: 'relative', background: 'none', border: flagged ? '1px solid var(--danger)' : count ? '1px solid var(--line)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', padding: '2px 5px', cursor: 'pointer', fontSize: '13px', color: flagged ? 'var(--danger)' : count ? 'var(--text-secondary)' : 'var(--muted)', opacity: (!flagged && !count) ? 0.3 : 1 }}
+                          title={count ? `${count} athugasemd${count > 1 ? 'ir' : ''}` : 'Bæta við athugasemd'}
+                        >
+                          💬{count > 0 && <span style={{ fontSize: '10px', fontWeight: 700, marginLeft: '2px' }}>{count}</span>}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td style={{ ...cell, width: '80px', padding: '2px 6px' }}>
                     <input
@@ -653,6 +749,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                         if (newCode === sig.signal_name) return;
                         const entry = libraryIndex.get(newCode);
                         if (entry) {
+                          const hasIec = sig.iec61850_ln || sig.iec61850_do || sig.iec61850_da || sig.iec61850_fc || sig.iec61850_cdc || sig.iec61850_dataset;
                           onUpdate(sig.id, {
                             signal_name: newCode,
                             library_id: entry.id,
@@ -662,12 +759,14 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                             alarm_class: entry.alarm_class ?? null,
                             source_type: entry.source_type,
                             state_id: entry.state_id ?? null,
-                            iec61850_ln: entry.iec61850_ln ?? null,
-                            iec61850_do: entry.iec61850_do ?? null,
-                            iec61850_da: entry.iec61850_da ?? null,
-                            iec61850_fc: entry.iec61850_fc ?? null,
-                            iec61850_cdc: entry.iec61850_cdc ?? null,
-                            iec61850_dataset: entry.iec61850_dataset ?? null,
+                            ...(!hasIec && {
+                              iec61850_ln: entry.iec61850_ln ?? null,
+                              iec61850_do: entry.iec61850_do ?? null,
+                              iec61850_da: entry.iec61850_da ?? null,
+                              iec61850_fc: entry.iec61850_fc ?? null,
+                              iec61850_cdc: entry.iec61850_cdc ?? null,
+                              iec61850_dataset: entry.iec61850_dataset ?? null,
+                            }),
                           });
                         } else {
                           onUpdate(sig.id, { signal_name: newCode });
@@ -893,7 +992,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                   {(() => {
                     const model = sig.iec61850_ied ? iedModels?.get(sig.iec61850_ied) : undefined;
                     const ldOpts = model ? [...new Set(model.map(f => f.ldInst))].sort() : [];
-                    const lnOpts = model ? [...new Set(model.filter(f => !sig.iec61850_ld || f.ldInst === sig.iec61850_ld).map(f => f.lnClass))].sort() : [];
+                    const lnOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.lnClass))].sort() : [];
                     const pfxOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && f.lnClass === ln).map(f => f.prefix))] : [];
                     const ldOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.ldInst))] : [];
                     const pfxOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.prefix))].sort() : [];
@@ -1027,7 +1126,7 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       onChange={() => {}} />
                   </td>
                   {/* Composite reference */}
-                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '10px', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: '160px' }}>
+                  <td style={{ ...cell, fontFamily: 'monospace', fontSize: '10px', color: iecInvalid ? 'var(--warn, #f59e0b)' : 'var(--muted)', whiteSpace: 'nowrap', minWidth: '160px' }}>
                     {(() => {
                       const ied = sig.iec61850_ied;
                       const ld = sig.iec61850_ld;
@@ -1040,86 +1139,57 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
                       const lnPart = `${pfx}${ln}${inst}`;
                       const doPart = [doN, daN].filter(Boolean).join('.');
                       const ref = [ld, lnPart].filter(Boolean).join('/') + (doPart ? `.${doPart}` : '');
-                      return ied ? `${ied}${ref}` : ref;
+                      const fullRef = ied ? `${ied}${ref}` : ref;
+                      if (iecInvalid) return <><span title="Ekki til í IED módeli">⚠</span> {fullRef}</>;
+                      return fullRef;
                     })()}
                   </td>
                   <td style={{ ...cell, fontSize: '10px', color: 'var(--muted)' }}>{sig.phase_added}</td>
-                  {reviewMode && (
-                    <td style={{ ...cell, width: '80px', position: 'relative' }}>
-                      {sig.review_flagged ? (
-                        <div style={{ position: 'relative' }}>
-                          <button
-                            type="button"
-                            onClick={() => setPopupId(popupId === sig.id ? null : sig.id)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }}
-                            title={sig.review_comment ?? ''}
-                          >
-                            💬
-                          </button>
-                          {popupId === sig.id && (
-                            <div style={{
-                              position: 'absolute', right: 0, top: '100%', zIndex: 10,
-                              background: 'var(--surface)', border: '1px solid var(--line)',
-                              borderRadius: 'var(--radius)', padding: 'var(--space-3)',
-                              minWidth: '200px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                              fontSize: '12px',
-                            }}>
-                              <div style={{ color: 'var(--text)', marginBottom: 'var(--space-2)' }}>{sig.review_comment}</div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onUpdate(sig.id, { review_flagged: false, review_comment: null });
-                                  setPopupId(null);
-                                }}
-                                style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px 8px', cursor: 'pointer' }}
-                              >
-                                Hreinsa
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : flaggingId === sig.id ? (
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          <input
-                            autoFocus
-                            value={flagComment}
-                            onChange={e => setFlagComment(e.target.value)}
-                            placeholder="Athugasemd..."
-                            style={{ ...eInput, border: '1px solid var(--accent)', width: '120px' }}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' && flagComment.trim()) {
-                                onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
-                                setFlaggingId(null);
-                                setFlagComment('');
-                              }
-                              if (e.key === 'Escape') { setFlaggingId(null); setFlagComment(''); }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!flagComment.trim()) return;
-                              onUpdate(sig.id, { review_flagged: true, review_comment: flagComment.trim() });
-                              setFlaggingId(null);
-                              setFlagComment('');
-                            }}
-                            style={{ fontSize: '11px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '2px 6px', cursor: 'pointer' }}
-                          >✓</button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { setFlaggingId(sig.id); setFlagComment(''); setPopupId(null); }}
-                          style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '2px 6px', cursor: 'pointer' }}
-                        >
-                          💬
-                        </button>
-                      )}
-                    </td>
+                  {showFatSat && (
+                    <>
+                      {/* FAT */}
+                      <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--success)' }}>
+                        <input type="checkbox" checked={sig.fat_tested ?? false}
+                          onChange={e => onUpdate(sig.id, { fat_tested: e.target.checked })}
+                          style={{ cursor: 'pointer' }} />
+                      </td>
+                      <td style={{ ...cell, minWidth: '60px' }}>
+                        <select value={sig.fat_result ?? ''} onChange={e => onUpdate(sig.id, { fat_result: (e.target.value || null) as 'PASS' | 'FAIL' | null })}
+                          style={{ ...eSelect }}>
+                          <option value="">—</option>
+                          <option value="PASS">PASS</option>
+                          <option value="FAIL">FAIL</option>
+                        </select>
+                      </td>
+                      <td style={{ ...cell, minWidth: '80px' }}>
+                        <input value={sig.fat_tested_by ?? ''} onChange={e => onUpdate(sig.id, { fat_tested_by: e.target.value || null })}
+                          style={{ ...eInput }} onFocus={onFocus} onBlur={onBlurReset} />
+                      </td>
+                      {/* SAT */}
+                      <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warning, #f59e0b)' }}>
+                        <input type="checkbox" checked={sig.sat_tested ?? false}
+                          onChange={e => onUpdate(sig.id, { sat_tested: e.target.checked })}
+                          style={{ cursor: 'pointer' }} />
+                      </td>
+                      <td style={{ ...cell, minWidth: '60px' }}>
+                        <select value={sig.sat_result ?? ''} onChange={e => onUpdate(sig.id, { sat_result: (e.target.value || null) as 'PASS' | 'FAIL' | null })}
+                          style={{ ...eSelect }}>
+                          <option value="">—</option>
+                          <option value="PASS">PASS</option>
+                          <option value="FAIL">FAIL</option>
+                        </select>
+                      </td>
+                      <td style={{ ...cell, minWidth: '80px' }}>
+                        <input value={sig.sat_tested_by ?? ''} onChange={e => onUpdate(sig.id, { sat_tested_by: e.target.value || null })}
+                          style={{ ...eInput }} onFocus={onFocus} onBlur={onBlurReset} />
+                      </td>
+                    </>
                   )}
+                  {onDelete && (
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                     <Button variant="danger" size="sm" onClick={() => onDelete(sig.id)}>Eyða</Button>
                   </td>
+                  )}
                 </tr>
                 </React.Fragment>
               );
@@ -1192,6 +1262,21 @@ export function SignalTable({ signals, equipment, library = [], states = [], bay
           </div>
         );
       })()}
+
+      {commentSignalId && (() => {
+        const sig = signals.find(s => s.id === commentSignalId);
+        if (!sig) return null;
+        return (
+          <SignalCommentsModal
+            signal={sig}
+            onUpdate={onUpdate}
+            onSave={onImmediateSave}
+            onClose={() => setCommentSignalId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
+
+export const SignalTable = memo(SignalTableInner);
