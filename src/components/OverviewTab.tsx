@@ -96,8 +96,10 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
     Promise.all([
       listBayFiles(api, projectId),
       loadStation(api, projectId),
-      api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
-    ]).then(([files, stationFile, { data: eq }]) => {
+      api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`)
+        .then(r => r.data)
+        .catch(() => [] as Equipment[]),
+    ]).then(([files, stationFile, eq]) => {
       setBayFiles(files);
       setStationSignals(stationFile.station.signals);
       setEquipment(eq);
@@ -105,19 +107,27 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
       .finally(() => setLoading(false));
   }, [api, projectId]);
 
+  const isCommittingRef = useRef(false);
+
   const commitAll = async () => {
-    const toSave = bayFilesRef.current.filter(f => dirtyBayIdsRef.current.has(f.bay.id));
-    if (toSave.length === 0) return;
-    const updated = await Promise.all(
-      toSave.map(f => saveBay(api, projectId, f, projectPhase))
-    );
-    setBayFiles(prev => {
-      const map = new Map(updated.map(f => [f.bay.id, f]));
-      return prev.map(f => map.get(f.bay.id) ?? f);
-    });
-    dirtyBayIdsRef.current.clear();
-    setIsDirty(false);
-    setLastSaved(new Date());
+    if (isCommittingRef.current) return;
+    isCommittingRef.current = true;
+    try {
+      const toSave = bayFilesRef.current.filter(f => dirtyBayIdsRef.current.has(f.bay.id));
+      if (toSave.length === 0) return;
+      const updated = await Promise.all(
+        toSave.map(f => saveBay(api, projectId, f, projectPhase))
+      );
+      setBayFiles(prev => {
+        const map = new Map(updated.map(f => [f.bay.id, f]));
+        return prev.map(f => map.get(f.bay.id) ?? f);
+      });
+      dirtyBayIdsRef.current.clear();
+      setIsDirty(false);
+      setLastSaved(new Date());
+    } finally {
+      isCommittingRef.current = false;
+    }
   };
 
   useAutoCommit(isDirty, commitAll);
