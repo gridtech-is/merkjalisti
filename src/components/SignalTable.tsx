@@ -584,7 +584,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
               {showFatSat && (
                 <>
                   <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--success)', color: 'var(--success)', textAlign: 'center' }}>FAT</th>
-                  <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--warning, #f59e0b)', color: 'var(--warning, #f59e0b)', textAlign: 'center' }}>SAT</th>
+                  <th colSpan={3} style={{ ...head, borderLeft: '2px solid var(--warn)', color: 'var(--warn)', textAlign: 'center' }}>SAT</th>
                 </>
               )}
               {onDelete !== undefined && <th style={head}></th>}
@@ -612,7 +612,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                     <th key={`fat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--success)' : undefined }}>{h}</th>
                   ))}
                   {(['✓', 'Niðurstaða', 'Prófari'] as string[]).map((h, i) => (
-                    <th key={`sat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--warning, #f59e0b)' : undefined }}>{h}</th>
+                    <th key={`sat-${h}`} style={{ ...head, top: '33px', fontSize: '10px', borderLeft: i === 0 ? '2px solid var(--warn)' : undefined }}>{h}</th>
                   ))}
                 </>
               )}
@@ -1154,11 +1154,12 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                           style={{ cursor: 'pointer' }} />
                       </td>
                       <td style={{ ...cell, minWidth: '60px' }}>
-                        <select value={sig.fat_result ?? ''} onChange={e => onUpdate(sig.id, { fat_result: (e.target.value || null) as 'PASS' | 'FAIL' | null })}
+                        <select value={sig.fat_result ?? ''} onChange={e => onUpdate(sig.id, { fat_result: (e.target.value || null) as 'PASS' | 'FAIL' | 'SKIP' | null })}
                           style={{ ...eSelect }}>
                           <option value="">—</option>
                           <option value="PASS">PASS</option>
                           <option value="FAIL">FAIL</option>
+                          <option value="SKIP">SKIP</option>
                         </select>
                       </td>
                       <td style={{ ...cell, minWidth: '80px' }}>
@@ -1166,17 +1167,18 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                           style={{ ...eInput }} onFocus={onFocus} onBlur={onBlurReset} />
                       </td>
                       {/* SAT */}
-                      <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warning, #f59e0b)' }}>
+                      <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warn)' }}>
                         <input type="checkbox" checked={sig.sat_tested ?? false}
                           onChange={e => onUpdate(sig.id, { sat_tested: e.target.checked })}
                           style={{ cursor: 'pointer' }} />
                       </td>
                       <td style={{ ...cell, minWidth: '60px' }}>
-                        <select value={sig.sat_result ?? ''} onChange={e => onUpdate(sig.id, { sat_result: (e.target.value || null) as 'PASS' | 'FAIL' | null })}
+                        <select value={sig.sat_result ?? ''} onChange={e => onUpdate(sig.id, { sat_result: (e.target.value || null) as 'PASS' | 'FAIL' | 'SKIP' | null })}
                           style={{ ...eSelect }}>
                           <option value="">—</option>
                           <option value="PASS">PASS</option>
                           <option value="FAIL">FAIL</option>
+                          <option value="SKIP">SKIP</option>
                         </select>
                       </td>
                       <td style={{ ...cell, minWidth: '80px' }}>
