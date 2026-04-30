@@ -1,6 +1,7 @@
 // src/pages/LibraryView.tsx
 import { useEffect, useState } from 'react';
 import { useApi } from '../context/ApiContext';
+import { useLibrary } from '../context/LibraryContext';
 import { listProjects } from '../services/projectService';
 import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
 import { listEquipmentTemplates, loadEquipmentTemplate, saveEquipmentTemplate, type EquipmentTemplateFile } from '../services/equipmentTemplateService';
@@ -20,9 +21,8 @@ function uuid(): string {
 
 function SignalsTab() {
   const { api } = useApi();
+  const { signalLibrary: library, signalLibrarySha: libSha, signalStates, loading: libLoading, updateLibrary } = useLibrary();
 
-  const [library, setLibrary] = useState<SignalLibraryEntry[]>([]);
-  const [libSha, setLibSha] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [bays, setBays] = useState<Bay[]>([]);
@@ -42,7 +42,6 @@ function SignalsTab() {
   const [bulkEditValue, setBulkEditValue] = useState('IED');
   const [bulkEditing, setBulkEditing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [signalStates, setSignalStates] = useState<SignalState[]>([]);
   const [signalUnits, setSignalUnits] = useState<SignalUnit[]>([]);
 
   const emptyNew = (): Partial<SignalLibraryEntry> => ({
@@ -62,24 +61,10 @@ function SignalsTab() {
 
   useEffect(() => {
     Promise.all([
-      api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
       listProjects(api),
-      api.readJson<SignalState[]>('data/signal_states.json'),
       listSignalUnits(api),
-    ]).then(([{ data: lib, sha }, projectList, { data: states }, { units }]) => {
-      setSignalStates(states);
+    ]).then(([projectList, { units }]) => {
       setSignalUnits(units);
-      const needsMigration = lib.some(e => !e.id);
-      if (needsMigration) {
-        const migrated = lib.map(e => e.id ? e : { ...e, id: uuid() });
-        api.writeJson('data/signal_library.json', migrated, sha, 'Migration: bæta við ID').then(newSha => {
-          setLibrary(migrated);
-          setLibSha(newSha);
-        });
-      } else {
-        setLibrary(lib);
-        setLibSha(sha);
-      }
       setProjects(projectList);
     }).finally(() => setLoading(false));
   }, [api]);
@@ -129,8 +114,7 @@ function SignalsTab() {
       const entry = buildEntry(newEntry);
       const newLib = [...library, entry];
       const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Nýtt merki: ${entry.code}`);
-      setLibrary(newLib);
-      setLibSha(sha);
+      updateLibrary(newLib, sha);
       setNewOpen(false);
       setNewEntry(emptyNew());
     } finally { setNewSaving(false); }
@@ -143,8 +127,7 @@ function SignalsTab() {
       const updated = buildEntry(editEntry, editEntry.id);
       const newLib = library.map(e => e.id === updated.id ? updated : e);
       const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Uppfæra merki: ${updated.code}`);
-      setLibrary(newLib);
-      setLibSha(sha);
+      updateLibrary(newLib, sha);
       setEditEntry(null);
       setEditOrigCode(null);
     } finally { setEditSaving(false); }
@@ -212,8 +195,7 @@ function SignalsTab() {
       }
       const newLib = library.map(e => e.code && selectedCodes.includes(e.code) ? { ...e, ...patch } : e);
       const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Bulk: breyta ${selectedCodes.length} merkjum`);
-      setLibrary(newLib);
-      setLibSha(sha);
+      updateLibrary(newLib, sha);
       setBulkEditOpen(false);
       setSelected(new Set());
     } finally { setBulkEditing(false); }
@@ -265,7 +247,7 @@ function SignalsTab() {
     padding: '6px 8px', fontSize: '13px', marginBottom: 'var(--space-3)', outline: 'none',
   };
 
-  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (loading || libLoading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
 
   return (
     <div>
@@ -412,6 +394,7 @@ function SignalsTab() {
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <Button size="sm" variant="ghost" onClick={() => { setAdding(e); setTargetBayId(''); setEquipmentCode(''); }}>+ Bay</Button>
                         <Button size="sm" variant="ghost" onClick={() => { setEditEntry({ ...e }); setEditOrigCode(e.code); }}>✏</Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setNewEntry({ ...e, code: '' }); setNewOpen(true); }}>⧉</Button>
                       </div>
                     </td>
                   </tr>
@@ -602,7 +585,7 @@ function SignalsTab() {
                       .filter(Boolean).slice(0, 2).join(' / ');
                     return (
                       <option key={s.id} value={s.id}>
-                        {s.type ? `${s.type} (${s.id})` : s.id}{preview ? ` — ${preview}` : ''}
+                        {s.id}{s.type ? ` — ${s.type}` : ''}{preview ? ` — ${preview}` : ''}
                       </option>
                     );
                   })}
@@ -703,9 +686,7 @@ function SignalsTab() {
 
 function StatesTab() {
   const { api } = useApi();
-  const [states, setStates] = useState<SignalState[]>([]);
-  const [stateSha, setStateSha] = useState('');
-  const [loading, setLoading] = useState(true);
+  const { signalStates: states, signalStatesSha: stateSha, loading, updateStates } = useLibrary();
   const [lang, setLang] = useState<'is' | 'en'>('is');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -725,11 +706,6 @@ function StatesTab() {
   });
   const [form, setForm] = useState<StateForm>(emptyForm());
 
-  useEffect(() => {
-    api.readJson<SignalState[]>('data/signal_states.json')
-      .then(({ data, sha: s }) => { setStates(data); setStateSha(s); })
-      .finally(() => setLoading(false));
-  }, [api]);
 
   const openNew = () => { setForm(emptyForm()); setEditingId(null); setIdError(''); setModalOpen(true); };
   const openEdit = (s: SignalState) => {
@@ -770,14 +746,14 @@ function StatesTab() {
       };
       const newStates = editingId === null ? [...states, built] : states.map(s => s.id === editingId ? built : s);
       const newSha = await api.writeJson('data/signal_states.json', newStates, stateSha, editingId ? `Uppfæra stöðu: ${trimId}` : `Nýr stöðuflokkur: ${trimId}`);
-      setStates(newStates); setStateSha(newSha); setModalOpen(false);
+      updateStates(newStates, newSha); setModalOpen(false);
     } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: string) => {
     const newStates = states.filter(s => s.id !== id);
     const newSha = await api.writeJson('data/signal_states.json', newStates, stateSha, `Eyða stöðu: ${id}`);
-    setStates(newStates); setStateSha(newSha); setDeletingId(null);
+    updateStates(newStates, newSha); setDeletingId(null);
   };
 
   const cell: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--line-muted)', fontSize: '12px', verticalAlign: 'top' };
@@ -1082,6 +1058,7 @@ function UnitsTab() {
 
 function TemplatesTab() {
   const { api } = useApi();
+  const { signalLibrary } = useLibrary();
   const [eqCatalog, setEqCatalog] = useState<EquipmentTemplate[]>([]);
   const [eqSignalTemplates, setEqSignalTemplates] = useState<EquipmentTemplate[]>([]);
   const [bayTemplates, setBayTemplates] = useState<BayTemplate[]>([]);
@@ -1089,16 +1066,13 @@ function TemplatesTab() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'equipment' | 'bay'>('equipment');
   const [editingFile, setEditingFile] = useState<EquipmentTemplateFile | null>(null);
-  const [signalLibrary, setSignalLibrary] = useState<SignalLibraryEntry[]>([]);
 
   useEffect(() => {
     Promise.all([
-      api.readJson<SignalLibraryEntry[]>('data/signal_library.json').catch(() => ({ data: [] as SignalLibraryEntry[], sha: '' })),
       api.readJson<EquipmentTemplate[]>('data/equipment_templates.json').catch(() => ({ data: [] as EquipmentTemplate[], sha: '' })),
       listEquipmentTemplates(api),
       listBayTemplates(api),
-    ]).then(([{ data: lib }, { data: catalog }, signalTmpl, bay]) => {
-      setSignalLibrary(lib);
+    ]).then(([{ data: catalog }, signalTmpl, bay]) => {
       setEqCatalog(catalog.map(t => ({ ...t, signals: t.signals ?? [] })));
       setEqSignalTemplates(signalTmpl);
       setBayTemplates(bay);

@@ -1,6 +1,7 @@
 // src/components/StationSignalsTab.tsx
 import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../context/ApiContext';
+import { useLibrary } from '../context/LibraryContext';
 import {
   loadStation, saveStation, sendStationForReview, approveStation, rejectStation,
   type StationFile,
@@ -10,7 +11,7 @@ import { Button } from './ui';
 import { SignalTable } from './SignalTable';
 import { SignalPickerModal } from './SignalFormModal';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, ProjectPhase, StationSignals } from '../types';
+import type { BaySignal, Equipment, ProjectPhase, StationSignals } from '../types';
 
 interface Props {
   projectId: string;
@@ -20,9 +21,8 @@ interface Props {
 
 export function StationSignalsTab({ projectId, projectPhase, equipment }: Props) {
   const { api, userName } = useApi();
+  const { signalLibrary: library, signalStates: states, loading: libLoading } = useLibrary();
   const [file, setFile] = useState<StationFile | null>(null);
-  const [library, setLibrary] = useState<SignalLibraryEntry[]>([]);
-  const [states, setStates] = useState<SignalState[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -36,15 +36,9 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
   projectPhaseRef.current = projectPhase;
 
   useEffect(() => {
-    Promise.all([
-      loadStation(api, projectId),
-      api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
-      api.readJson<SignalState[]>('data/signal_states.json'),
-    ]).then(([f, { data: lib }, { data: st }]) => {
-      setFile(f);
-      setLibrary(lib);
-      setStates(st);
-    }).finally(() => setLoading(false));
+    loadStation(api, projectId)
+      .then(f => setFile(f))
+      .finally(() => setLoading(false));
   }, [api, projectId]);
 
   const handleAdd = (signals: BaySignal[]) => {
@@ -175,7 +169,7 @@ export function StationSignalsTab({ projectId, projectPhase, equipment }: Props)
     }
   };
 
-  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  if (loading || libLoading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (!file) return <p style={{ color: 'var(--danger)' }}>Stöðvarmerki finnast ekki.</p>;
 
   const { station } = file;

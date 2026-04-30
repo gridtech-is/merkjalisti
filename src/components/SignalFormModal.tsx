@@ -1,7 +1,7 @@
 // src/components/SignalFormModal.tsx
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Modal, Input, Select, Button } from './ui';
-import { useApi } from '../context/ApiContext';
+import { useLibrary } from '../context/LibraryContext';
 import type { BaySignal, SignalLibraryEntry, ProjectPhase, Equipment } from '../types';
 
 function uuid(): string {
@@ -19,9 +19,7 @@ interface Props {
 }
 
 export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
-  const { api } = useApi();
-  const [library, setLibrary] = useState<SignalLibraryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { signalLibrary: library, loading } = useLibrary();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -31,21 +29,29 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
   )?.code ?? '';
   const [equipmentCode, setEquipmentCode] = useState(defaultEquipment);
 
-  useEffect(() => {
-    api.readJson<SignalLibraryEntry[]>('data/signal_library.json')
-      .then(({ data }) => setLibrary(data))
-      .finally(() => setLoading(false));
-  }, [api]);
+  const norm = (s: string) => s.toLowerCase()
+    .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o')
+    .replace(/ú/g, 'u').replace(/ý/g, 'y').replace(/ð/g, 'd').replace(/þ/g, 'th')
+    .replace(/æ/g, 'ae').replace(/ö/g, 'o');
 
-  const filtered = library.filter(e => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      e.code?.toLowerCase().includes(q) ||
-      e.name_is.toLowerCase().includes(q) ||
-      (e.name_en?.toLowerCase().includes(q) ?? false)
-    );
-  });
+  const scoreEntry = (e: SignalLibraryEntry, tokens: string[]): number => {
+    const fields = [
+      norm(e.code ?? ''), norm(e.name_is), norm(e.name_en ?? ''),
+    ];
+    if (!tokens.every(t => fields.some(f => f.includes(t)))) return -1;
+    if (fields[0].startsWith(tokens[0])) return 2;
+    if (fields.some(f => f.startsWith(tokens[0]))) return 1;
+    return 0;
+  };
+
+  const tokens = norm(search).split(/\s+/).filter(Boolean);
+  const filtered = tokens.length === 0
+    ? library
+    : library
+        .map(e => ({ e, score: scoreEntry(e, tokens) }))
+        .filter(x => x.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.e);
 
   const toggle = (code: string) => {
     setSelected(prev => {
@@ -147,12 +153,16 @@ export function SignalPickerModal({ phase, equipment, onAdd, onClose }: Props) {
           />
         )}
 
-        <Input
-          label="Leita í safni"
-          value={search}
-          onChange={setSearch}
-          placeholder="Leitaðu að kóða eða heiti..."
-        />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--space-2)' }}>
+          <div style={{ flex: 1 }}>
+            <Input
+              label="Leita í safni"
+              value={search}
+              onChange={setSearch}
+              placeholder="Leitaðu að kóða eða heiti..."
+            />
+          </div>
+        </div>
 
         {selected.size > 0 && (
           <div style={{ fontSize: '12px', color: 'var(--accent)' }}>

@@ -203,20 +203,58 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
       return a.code.localeCompare(b.code, 'is');
     }).map(e => e.code), [equipment]);
   const iedOptions = useMemo(() => equipment.filter(e => e.category === 'ied'), [equipment]);
-  const iecInvalidIds = useMemo(() => new Set<string>(
-    iedModels ? signals.filter(sig => {
-      const model = sig.iec61850_ied ? iedModels.get(sig.iec61850_ied) : undefined;
-      if (!model || !sig.iec61850_ln) return false;
-      return model.filter(f =>
-        (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
-        (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
-        f.lnClass === sig.iec61850_ln &&
-        (!sig.iec61850_ln_inst || f.lnInst === sig.iec61850_ln_inst) &&
-        (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
-        (!sig.iec61850_da || f.daName === sig.iec61850_da)
-      ).length === 0;
-    }).map(s => s.id) : []
-  ), [signals, iedModels]);
+
+  // Per-IED precomputed options — O(IEDs × model_size), not O(signals × model_size)
+  const iedBaseOpts = useMemo(() => {
+    const map = new Map<string, { ldOpts: string[]; lnOpts: string[]; pfxOpts: string[]; doOpts: string[]; instOpts: string[]; daOpts: string[] }>();
+    if (!iedModels) return map;
+    for (const [code, model] of iedModels) {
+      map.set(code, {
+        ldOpts: [...new Set(model.map(f => f.ldInst))].sort(),
+        lnOpts: [...new Set(model.map(f => f.lnClass))].sort(),
+        pfxOpts: [...new Set(model.map(f => f.prefix).filter(Boolean))].sort(),
+        doOpts: [...new Set(model.map(f => f.doName))].sort(),
+        instOpts: [...new Set(model.map(f => f.lnInst).filter(Boolean))].sort(),
+        daOpts: [...new Set(model.map(f => f.daName).filter(Boolean))].sort(),
+      });
+    }
+    return map;
+  }, [iedModels]);
+
+  // Per-IED per-lnClass index — reduces iecInvalidIds from O(signals×model) to O(signals×lnClass_entries)
+  const iedLnIndex = useMemo(() => {
+    const map = new Map<string, Map<string, IedFcda[]>>();
+    if (!iedModels) return map;
+    for (const [code, model] of iedModels) {
+      const lnMap = new Map<string, IedFcda[]>();
+      for (const f of model) {
+        const arr = lnMap.get(f.lnClass) ?? [];
+        arr.push(f);
+        lnMap.set(f.lnClass, arr);
+      }
+      map.set(code, lnMap);
+    }
+    return map;
+  }, [iedModels]);
+
+  const iecInvalidIds = useMemo(() => {
+    if (!iedModels || iedModels.size === 0) return new Set<string>();
+    return new Set<string>(
+      signals.filter(sig => {
+        if (!sig.iec61850_ied || !sig.iec61850_ln) return false;
+        const lnMap = iedLnIndex.get(sig.iec61850_ied);
+        if (!lnMap) return false;
+        const candidates = lnMap.get(sig.iec61850_ln) ?? [];
+        return candidates.length === 0 || !candidates.some(f =>
+          (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) &&
+          (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) &&
+          (!sig.iec61850_ln_inst || f.lnInst === sig.iec61850_ln_inst) &&
+          (!sig.iec61850_do || f.doName === sig.iec61850_do) &&
+          (!sig.iec61850_da || f.daName === sig.iec61850_da)
+        );
+      }).map(s => s.id)
+    );
+  }, [signals, iedModels, iedLnIndex]);
   const visibleSignals = useMemo(() => signals.filter(s => {
     if (filterEq && s.equipment_code !== filterEq) return false;
     if (filterComments && !s.review_flagged) return false;
@@ -561,7 +599,24 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
           {datasetOpts.map(v => <option key={v} value={v} />)}
         </datalist>
       )}
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+      {library.length > 0 && (
+        <datalist id={`dl-lib-${bayDisplayId}`}>
+          {library.filter(e => e.code).map(e => (
+            <option key={e.code!} value={e.code!}>{e.name_is}</option>
+          ))}
+        </datalist>
+      )}
+      {[...iedBaseOpts.entries()].map(([code, opts]) => (
+        <React.Fragment key={code}>
+          {opts.ldOpts.length > 0 && <datalist id={`dl-ld-${code}`}>{opts.ldOpts.map(v => <option key={v} value={v} />)}</datalist>}
+          {opts.lnOpts.length > 0 && <datalist id={`dl-ln-${code}`}>{opts.lnOpts.map(v => <option key={v} value={v} />)}</datalist>}
+          {opts.pfxOpts.length > 1 && <datalist id={`dl-pfx-${code}`}>{opts.pfxOpts.map(v => <option key={v} value={v} />)}</datalist>}
+          {opts.instOpts.length > 0 && <datalist id={`dl-inst-${code}`}>{opts.instOpts.map(v => <option key={v} value={v} />)}</datalist>}
+          {opts.doOpts.length > 0 && <datalist id={`dl-do-${code}`}>{opts.doOpts.map(v => <option key={v} value={v} />)}</datalist>}
+          {opts.daOpts.length > 0 && <datalist id={`dl-da-${code}`}>{opts.daOpts.map(v => <option key={v} value={v} />)}</datalist>}
+        </React.Fragment>
+      ))}
+      <div style={{ overflowX: 'auto', ...(!hideToolbar && { overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }) }}>
         <table style={{ width: 'auto', borderCollapse: 'collapse', minWidth: '1700px' }}>
           <thead>
             <tr>
@@ -740,7 +795,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                       style={{ ...eInput, color: 'var(--accent)' }}
                       defaultValue={sig.signal_name}
                       key={`sn-${sig.id}-${sig.signal_name}`}
-                      list={`lib-${sig.id}`}
+                      list={library.length > 0 ? `dl-lib-${bayDisplayId}` : undefined}
                       placeholder="kóði"
                       onFocus={onFocus}
                       onBlur={e => {
@@ -774,13 +829,6 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                       }}
                       onChange={() => {}}
                     />
-                    {library.length > 0 && (
-                      <datalist id={`lib-${sig.id}`}>
-                        {library.filter(e => e.code).map(e => (
-                          <option key={e.code!} value={e.code!}>{e.name_is}</option>
-                        ))}
-                      </datalist>
-                    )}
                   </td>
                   {/* Kóði — computed identifier */}
                   <td style={{ ...cell, minWidth: '160px' }}>
@@ -988,42 +1036,32 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                       );
                     })()}
                   </td>
-                  {/* ldInst */}
+                  {/* ldInst + Prefix + lnClass + lnInst + doName + daName — datalists shared per IED, not per signal */}
                   {(() => {
-                    const model = sig.iec61850_ied ? iedModels?.get(sig.iec61850_ied) : undefined;
-                    const ldOpts = model ? [...new Set(model.map(f => f.ldInst))].sort() : [];
-                    const lnOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.lnClass))].sort() : [];
-                    const pfxOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && f.lnClass === ln).map(f => f.prefix))] : [];
+                    const ied = sig.iec61850_ied;
+                    const model = ied ? iedModels?.get(ied) : undefined;
+                    const opts = ied ? iedBaseOpts.get(ied) : undefined;
                     const ldOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.ldInst))] : [];
-                    const pfxOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln)).map(f => f.prefix))].sort() : [];
-                    const doOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.doName))].sort() : [];
-                    const instOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix)).map(f => f.lnInst).filter(Boolean))].sort() : [];
-                    const daOpts = model ? [...new Set(model.filter(f => (!sig.iec61850_ld || f.ldInst === sig.iec61850_ld) && (!sig.iec61850_ln || f.lnClass === sig.iec61850_ln) && (!sig.iec61850_ln_prefix || f.prefix === sig.iec61850_ln_prefix) && (!sig.iec61850_do || f.doName === sig.iec61850_do)).map(f => f.daName).filter(Boolean))].sort() : [];
+                    const pfxOptsForLn = (ln: string) => model ? [...new Set(model.filter(f => f.lnClass === ln).map(f => f.prefix))] : [];
                     return (
                       <>
-                        {ldOpts.length > 0 && <datalist id={`dl-ld-${sig.id}`}>{ldOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        {lnOpts.length > 0 && <datalist id={`dl-ln-${sig.id}`}>{lnOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        {pfxOpts.length > 1 && <datalist id={`dl-pfx-${sig.id}`}>{pfxOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        {instOpts.length > 0 && <datalist id={`dl-inst-${sig.id}`}>{instOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        {doOpts.length > 0 && <datalist id={`dl-do-${sig.id}`}>{doOpts.map(v => <option key={v} value={v} />)}</datalist>}
-                        {daOpts.length > 0 && <datalist id={`dl-da-${sig.id}`}>{daOpts.map(v => <option key={v} value={v} />)}</datalist>}
                         <td style={{ ...cell, minWidth: '85px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ld ?? ''} key={`ld-${sig.id}-${sig.iec61850_ld}`}
-                            list={ldOpts.length > 0 ? `dl-ld-${sig.id}` : undefined}
+                            list={opts?.ldOpts.length ? `dl-ld-${ied}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ld: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* Prefix */}
                         <td style={{ ...cell, minWidth: '65px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln_prefix ?? ''} key={`pfx-${sig.id}-${sig.iec61850_ln_prefix}`}
-                            list={pfxOpts.length > 1 ? `dl-pfx-${sig.id}` : undefined}
+                            list={(opts?.pfxOpts.length ?? 0) > 1 ? `dl-pfx-${ied}` : undefined}
                             onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_prefix: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* lnClass */}
                         <td style={{ ...cell, minWidth: '75px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln ?? ''} key={`ln-${sig.id}-${sig.iec61850_ln}`}
-                            list={lnOpts.length > 0 ? `dl-ln-${sig.id}` : undefined}
+                            list={opts?.lnOpts.length ? `dl-ln-${ied}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
                               const ln = e.target.value || null;
@@ -1041,14 +1079,14 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                         {/* lnInst */}
                         <td style={{ ...cell, minWidth: '50px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_ln_inst ?? ''} key={`inst-${sig.id}-${sig.iec61850_ln_inst}`}
-                            list={instOpts.length > 0 ? `dl-inst-${sig.id}` : undefined}
+                            list={opts?.instOpts.length ? `dl-inst-${ied}` : undefined}
                             placeholder="1" onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { iec61850_ln_inst: e.target.value || null }); }}
                             onChange={() => {}} />
                         </td>
                         {/* doName */}
                         <td style={{ ...cell, minWidth: '80px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_do ?? ''} key={`do-${sig.id}-${sig.iec61850_do}`}
-                            list={doOpts.length > 0 ? `dl-do-${sig.id}` : undefined}
+                            list={opts?.doOpts.length ? `dl-do-${ied}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
                               const doName = e.target.value || null;
@@ -1069,7 +1107,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                         {/* daName */}
                         <td style={{ ...cell, minWidth: '80px' }}>
                           <input style={eInput} defaultValue={sig.iec61850_da ?? ''} key={`da-${sig.id}-${sig.iec61850_da}`}
-                            list={daOpts.length > 0 ? `dl-da-${sig.id}` : undefined}
+                            list={opts?.daOpts.length ? `dl-da-${ied}` : undefined}
                             onFocus={onFocus} onBlur={e => {
                               onBlurReset(e);
                               const daName = e.target.value || null;
@@ -1163,8 +1201,9 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                         </select>
                       </td>
                       <td style={{ ...cell, minWidth: '80px' }}>
-                        <input value={sig.fat_tested_by ?? ''} onChange={e => onUpdate(sig.id, { fat_tested_by: e.target.value || null })}
-                          style={{ ...eInput }} onFocus={onFocus} onBlur={onBlurReset} />
+                        <input defaultValue={sig.fat_tested_by ?? ''} key={`ftb-${sig.id}-${sig.fat_tested_by}`}
+                          onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { fat_tested_by: e.target.value || null }); }}
+                          onChange={() => {}} style={{ ...eInput }} />
                       </td>
                       {/* SAT */}
                       <td style={{ ...cell, textAlign: 'center', borderLeft: '2px solid var(--warn)' }}>
@@ -1182,8 +1221,9 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                         </select>
                       </td>
                       <td style={{ ...cell, minWidth: '80px' }}>
-                        <input value={sig.sat_tested_by ?? ''} onChange={e => onUpdate(sig.id, { sat_tested_by: e.target.value || null })}
-                          style={{ ...eInput }} onFocus={onFocus} onBlur={onBlurReset} />
+                        <input defaultValue={sig.sat_tested_by ?? ''} key={`stb-${sig.id}-${sig.sat_tested_by}`}
+                          onFocus={onFocus} onBlur={e => { onBlurReset(e); onUpdate(sig.id, { sat_tested_by: e.target.value || null }); }}
+                          onChange={() => {}} style={{ ...eInput }} />
                       </td>
                     </>
                   )}

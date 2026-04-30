@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
+import { useLibrary } from '../context/LibraryContext';
 import { listBays, loadBay, saveBay } from '../services/bayService';
 import { Button } from '../components/ui';
 import type { Bay, BaySignal, SignalLibraryEntry, AlarmClass, SourceType } from '../types';
@@ -16,10 +17,9 @@ function uuid(): string {
 export function SignalsView() {
   const { projectId } = useParams<{ projectId: string }>();
   const { api } = useApi();
+  const { signalLibrary: library, signalLibrarySha: libSha, updateLibrary } = useLibrary();
   const navigate = useNavigate();
 
-  const [library, setLibrary] = useState<SignalLibraryEntry[]>([]);
-  const [libSha, setLibSha] = useState('');
   const [bays, setBays] = useState<Bay[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -48,22 +48,9 @@ export function SignalsView() {
 
   useEffect(() => {
     if (!projectId) return;
-    Promise.all([
-      api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
-      listBays(api, projectId),
-    ]).then(async ([{ data: lib, sha }, allBays]) => {
-      // Migration: add IDs to entries that are missing them
-      const needsMigration = lib.some(e => !e.id);
-      let finalLib = lib;
-      let finalSha = sha;
-      if (needsMigration) {
-        finalLib = lib.map(e => e.id ? e : { ...e, id: uuid() });
-        finalSha = await api.writeJson('data/signal_library.json', finalLib, sha, 'Bæta við ID á merkjasafn (migration)');
-      }
-      setLibrary(finalLib);
-      setLibSha(finalSha);
-      setBays(allBays);
-    }).finally(() => setLoading(false));
+    listBays(api, projectId)
+      .then(allBays => setBays(allBays))
+      .finally(() => setLoading(false));
   }, [api, projectId]);
 
   // Build entry object from form state
@@ -98,8 +85,7 @@ export function SignalsView() {
       const entry = buildEntry(newEntry);
       const newLib = [...library, entry];
       const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Nýtt merki: ${entry.code}`);
-      setLibrary(newLib);
-      setLibSha(sha);
+      updateLibrary(newLib, sha);
       setNewOpen(false);
       setNewEntry(emptyNew());
     } finally {
@@ -118,8 +104,7 @@ export function SignalsView() {
       const updated = buildEntry(editEntry, editEntry.id);
       const newLib = library.map(e => e.id === updated.id ? updated : e);
       const sha = await api.writeJson('data/signal_library.json', newLib, libSha, `Uppfæra merki: ${updated.code}`);
-      setLibrary(newLib);
-      setLibSha(sha);
+      updateLibrary(newLib, sha);
       await cascadeLibraryUpdate(updated, editOrigCode);
       setEditEntry(null);
       setEditOrigCode(null);

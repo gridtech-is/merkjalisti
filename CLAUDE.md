@@ -2,7 +2,7 @@
 
 ## Commands
 ```bash
-npm run dev       # Vite dev server at http://localhost:5173/merkjalisti/
+npm run dev       # Vite dev server — Local: http://localhost:5173/merkjalisti/ — Network: http://192.168.8.250:5173/merkjalisti/ (LAN)
 npm run build     # tsc + vite build (type-checks first)
 npm test          # Vitest run once
 npm run test:watch
@@ -21,6 +21,8 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - Token stored in localStorage via `src/github/token.ts`
 - Auto-commit via `useAutoCommit` hook (30s debounce, only triggers on false→true dirty transition)
 - HashRouter for GitHub Pages compatibility
+- `signal_library.json` og `signal_states.json` eru cached í `src/context/LibraryContext.tsx` — nota `useLibrary()` í öllum components, ALDREI `api.readJson()` beint fyrir þessar skrár
+- Eftir skrif á þessar skrár: kalla `updateLibrary(data, sha)` eða `updateStates(data, sha)` til að uppfæra context
 
 ## Data repo structure
 `gridtech-is/merkjalisti-data`:
@@ -41,7 +43,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 
 ---
 
-## Staða núna — 2026-04-24
+## Staða núna — 2026-04-27
 
 ### Klárað og pushað — allt á main
 - **Plan 1–3** ✅ — review workflow, station_signals.json, migration
@@ -72,11 +74,23 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - **IEC dálkabreidd** ✅ — IED 130px, ldInst 85px, lnClass 75px, do/da 80px, Ref 160px
 - **Lóðréttar dálkalínur** ✅ — borderRight á öllum dálkum í SignalTable og OverviewTab
 - **Signal library EF merki** ✅ — EF.ST1/TR1, EF.ST2/TR2, EF.ST3/TR3 (IN >, IN >>, IN >>>)
-- **58 testar** ✅, build ✅
-
-### Git staða
-- App repo: `main`, allt pushað ✅
-- Data repo: `main`, allt pushað ✅
+- **zenon útflutningur** ✅ — `exportZenonXml`, `exportZenonReactionMatrix`, `exportZenonBay`, `exportZenonAllBays` í `exportService.ts`
+  - **↓ zenon** hnappar í BayView (DRAFT/IN_REVIEW/LOCKED) og OverviewTab
+  - Flytur út: `{display_id}-zenon-variables.xml` + `{display_id}-zenon-rematrix.xml`
+  - Import í zenon: `File → Import → Variables` og `File → Import → Reaction matrix list`
+  - **UTF-16 LE encoding** með BOM (0xFEFF) — zenon krefst þess
+  - **SymbAddr format:** `Server_{IED}!{LD}/{Prefix}{LN}{Inst}/{DO}[/{DA}][{FC}]`
+  - **CDC → TypeID:** SPS/SPC/DPC/ACT/ACD→BOOL(8), DPS→UDINT(5), MV/CMV/SAV→REAL(11), INS/INC→DINT(9)
+  - **Variable element:** `<Variable ShortName=... DriverID="4" TypeID=... Matrix=...>` + Limits_0/1 (aðeins BOOL)
+  - **Þrjár apartments:** `process variables list` / `driver list` / `type list`, MainVersion 15000
+  - **SPI Reaction Matrix** (TypeID=1): CheckArt=0, ReaWert+ReaWertMaske=1 per stöðu, Status 512/513
+  - **DPI Reaction Matrix** (TypeID=2): CheckArt=3, ReaAlarm enum-teljari 0–3, State_0 catch-all Status=640
+  - **DPI state röðun:** OPEN('01')→CLOSED('10')→INTERMEDIATE('00')→FAULT('11')
+- **Block eyða** ✅ — `onBatchDelete` prop í SignalTable, "Eyða völdum" hnappur í block edit toolbar
+- **Vista við yfirganga** ✅ — `navigateAway()` í BayView vistar ef dirty áður en farið er milli reita eða yfir á aðrar síður
+- **useAutoCommit unmount-vista** ✅ — hookinn vistar strax við unmount ef dirty, hindrar tvöföldun með `isDirtyRef`
+- **LibraryContext** ✅ — `signal_library` + `signal_states` cached einu sinni, deilt alls staðar via `useLibrary()`
+- **84 testar** ✅, build ✅
 
 ### Óklárað / framundan
 - **SaaS/viðskiptavinir spec** ✅ committað — `docs/superpowers/specs/2026-04-23-saas-vidskiptavinir-design.md` — Supabase, RLS, RBAC, IP allowlist, audit log — **framkvæmd ekki hafin**
@@ -88,7 +102,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - IED módel geymt sem `IedFcda[]` í `projects/{id}/ied_models/{equipment.id}.json`
 
 ### Git staða
-- App repo: `main`, allt pushað ✅
+- App repo: `main`, allt pushað ✅ (fram að zenon+block eyða+vista við yfirganga — ekki pushað enn)
 - Data repo: `main`, allt pushað ✅
 
 ### Athugið á nýrri tölvu

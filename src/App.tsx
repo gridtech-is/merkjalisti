@@ -4,6 +4,7 @@ import { loadToken } from './github/token';
 import { TokenSetup } from './components/TokenSetup';
 import { AppShell } from './components/AppShell';
 import { ApiProvider } from './context/ApiContext';
+import { LibraryProvider } from './context/LibraryContext';
 import { ProjectNavProvider } from './context/ProjectNavContext';
 import { Dashboard } from './pages/Dashboard';
 import { NewProject } from './pages/NewProject';
@@ -24,6 +25,7 @@ export default function App() {
 
   return (
     <ApiProvider>
+      <LibraryProvider>
       <ProjectNavProvider>
       <HashRouter>
         <Routes>
@@ -40,6 +42,7 @@ export default function App() {
         </Routes>
       </HashRouter>
       </ProjectNavProvider>
+      </LibraryProvider>
     </ApiProvider>
   );
 }

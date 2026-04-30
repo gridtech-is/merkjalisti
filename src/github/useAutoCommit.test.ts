@@ -24,6 +24,36 @@ describe('useAutoCommit', () => {
     expect(commitFn).toHaveBeenCalledOnce();
   });
 
+  it('calls commitFn immediately on unmount when dirty', async () => {
+    vi.useFakeTimers();
+    const commitFn = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useAutoCommit(true, commitFn));
+    vi.advanceTimersByTime(5_000); // only 5s — timer hasn't fired yet
+    unmount();
+    await Promise.resolve();
+    expect(commitFn).toHaveBeenCalledOnce();
+  });
+
+  it('does not call commitFn on unmount when not dirty', async () => {
+    vi.useFakeTimers();
+    const commitFn = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useAutoCommit(false, commitFn));
+    unmount();
+    await Promise.resolve();
+    expect(commitFn).not.toHaveBeenCalled();
+  });
+
+  it('does not double-commit if 30s fires then unmount', async () => {
+    vi.useFakeTimers();
+    const commitFn = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useAutoCommit(true, commitFn));
+    vi.advanceTimersByTime(30_000);
+    await Promise.resolve();
+    unmount();
+    await Promise.resolve();
+    expect(commitFn).toHaveBeenCalledOnce();
+  });
+
   it('does not reset timer on re-render while isDirty stays true', async () => {
     vi.useFakeTimers();
     const commitFn = vi.fn().mockResolvedValue(undefined);

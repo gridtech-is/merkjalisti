@@ -181,7 +181,15 @@ export interface BaySignal {
   sat_result: TestResult | null;
   review_flagged: boolean;
   review_comment: string | null;
+  review_comments?: SignalComment[];
   group_label?: string | null;
+}
+
+export interface SignalComment {
+  id: string;
+  author: string;
+  text: string;
+  created_at: string;
 }
 
 // ─── IED model (parsed from ICD/SCD) ─────────────────────────────────────

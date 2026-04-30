@@ -1,8 +1,9 @@
 // src/pages/BayView.tsx
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../context/ApiContext';
-import { loadBay, saveBay, saveBayTemplate, sendBayForReview, approveBay, rejectBay, type BayFile } from '../services/bayService';
+import { useLibrary } from '../context/LibraryContext';
+import { loadBay, saveBay, saveBayTemplate, sendBayForReview, approveBay, rejectBay, listBays, type BayFile } from '../services/bayService';
 import { useAutoCommit } from '../github/useAutoCommit';
 import { Button } from '../components/ui';
 import { SignalTable } from '../components/SignalTable';
@@ -10,9 +11,9 @@ import { TestingPanel } from '../components/TestingPanel';
 import { SignalPickerModal } from '../components/SignalFormModal';
 import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
-import { exportBayToExcel } from '../services/exportService';
+import { exportBayToExcel, exportZenonBay } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, SignalLibraryEntry, SignalState, IedFcda } from '../types';
+import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, IedFcda } from '../types';
 import { loadIedModel } from '../services/iedModelService';
 import { listEquipmentTemplates } from '../services/equipmentTemplateService';
 import { ApplyTemplateModal } from '../components/ApplyTemplateModal';
@@ -21,12 +22,11 @@ import { createUndoState, undoPush, undoUndo, undoRedo, type UndoState } from '.
 export function BayView() {
   const { projectId, bayId } = useParams<{ projectId: string; bayId: string }>();
   const { api, userName } = useApi();
+  const { signalLibrary, signalStates, loading: libLoading } = useLibrary();
   const navigate = useNavigate();
   const [bayFile, setBayFile] = useState<BayFile | null>(null);
   const [allEquipment, setAllEquipment] = useState<Equipment[]>([]);
   const [equipmentSha, setEquipmentSha] = useState('');
-  const [signalLibrary, setSignalLibrary] = useState<SignalLibraryEntry[]>([]);
-  const [signalStates, setSignalStates] = useState<SignalState[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -43,6 +43,7 @@ export function BayView() {
   const [renamingBay, setRenamingBay] = useState(false);
   const [descDraft, setDescDraft] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
+  const [bayList, setBayList] = useState<Bay[]>([]);
 
   const bayFileRef = useRef<BayFile | null>(null);
   const allEquipmentRef = useRef<Equipment[]>([]);
@@ -56,16 +57,12 @@ export function BayView() {
     Promise.all([
       loadBay(api, projectId, bayId),
       api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
-      api.readJson<SignalLibraryEntry[]>('data/signal_library.json'),
-      api.readJson<SignalState[]>('data/signal_states.json'),
       api.readJson<Project>(`projects/${projectId}/project.json`),
-    ]).then(([f, { data: eq, sha: eqSha }, { data: lib }, { data: states }, { data: project }]) => {
+    ]).then(([f, { data: eq, sha: eqSha }, { data: project }]) => {
       setBayFile(f);
       setUndoState(createUndoState(f.bay.signals));
       setAllEquipment(eq);
       setEquipmentSha(eqSha);
-      setSignalLibrary(lib);
-      setSignalStates(states);
       setStationNumber(project.station_number);
       // Load IED models for all IED equipment
       const ieds = eq.filter(e => e.category === 'ied');
@@ -80,6 +77,11 @@ export function BayView() {
     }).finally(() => setLoading(false));
     listEquipmentTemplates(api).then(setSignalTemplates).catch(() => {});
   }, [api, projectId, bayId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    listBays(api, projectId).then(setBayList).catch(() => {});
+  }, [api, projectId]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -119,7 +121,7 @@ export function BayView() {
     });
   };
 
-  const handleDelete = (signalId: string) => {
+  const handleDelete = useCallback((signalId: string) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     const sig = before.find(s => s.id === signalId);
     const after = before.filter(s => s.id !== signalId);
@@ -139,9 +141,9 @@ export function BayView() {
         comment: `Merki eytt: ${sig.signal_name}`,
       });
     }
-  };
+  }, [api, projectId, userName]);
 
-  const handleUpdate = (signalId: string, patch: Partial<BaySignal>) => {
+  const handleUpdate = useCallback((signalId: string, patch: Partial<BaySignal>) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     const oldSig = before.find(s => s.id === signalId);
     const after = before.map(s => s.id === signalId ? { ...s, ...patch } : s);
@@ -168,9 +170,26 @@ export function BayView() {
         });
       }
     }
-  };
+  }, [api, projectId, bayId, userName]);
 
-  const handleBatchUpdate = (patches: { id: string; patch: Partial<BaySignal> }[]) => {
+  const handleBatchDelete = useCallback((ids: string[]) => {
+    const before = bayFileRef.current?.bay.signals ?? [];
+    const toDelete = before.filter(s => ids.includes(s.id));
+    const after = before.filter(s => !ids.includes(s.id));
+    setUndoState(prev => undoPush(prev, after));
+    setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
+    setIsDirty(true);
+    toDelete.forEach(sig => {
+      appendChange(api, projectId!, {
+        user: userName, phase: 'DESIGN', type: 'SIGNAL_REMOVED',
+        target_id: sig.id, target_type: 'signal',
+        field: null, old_value: `${sig.equipment_code}_${sig.signal_name}`, new_value: null,
+        comment: `Merki eytt (block): ${sig.signal_name}`,
+      });
+    });
+  }, [api, projectId, userName]);
+
+  const handleBatchUpdate = useCallback((patches: { id: string; patch: Partial<BaySignal> }[]) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     let after = before;
     for (const { id, patch } of patches) {
@@ -202,7 +221,7 @@ export function BayView() {
         }
       }
     }
-  };
+  }, [api, projectId, bayId, userName]);
 
   const EQ_TYPE_ORDER: Record<string, number> = { Aflrofi: 0, Skilrofi: 1, Jarðrofi: 2, Spennir: 3, Vörn: 4, Stjórnbúnaður: 5, Annað: 6 };
   const handleSortByType = () => {
@@ -221,16 +240,16 @@ export function BayView() {
     handleReorder(sorted.map(s => s.id));
   };
 
-  const handleReorder = (newOrder: string[]) => {
+  const handleReorder = useCallback((newOrder: string[]) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     const map = new Map(before.map(s => [s.id, s]));
     const after = newOrder.map(id => map.get(id)).filter(Boolean) as typeof before;
     setUndoState(prev => undoPush(prev, after));
     setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
-  };
+  }, []);
 
-  const handleDuplicate = (ids: string[], at: number, count = 1) => {
+  const handleDuplicate = useCallback((ids: string[], at: number, count = 1) => {
     const before = bayFileRef.current?.bay.signals ?? [];
     const originals = before.filter(s => ids.includes(s.id));
     const copies = Array.from({ length: count }, () =>
@@ -248,7 +267,7 @@ export function BayView() {
     setUndoState(prev => undoPush(prev, after));
     setBayFile(prev => prev ? { ...prev, bay: { ...prev.bay, signals: after } } : prev);
     setIsDirty(true);
-  };
+  }, []);
 
   const handleUndoRef = useRef<() => void>(() => {});
   const handleRedoRef = useRef<() => void>(() => {});
@@ -383,7 +402,14 @@ export function BayView() {
     }
   };
 
-  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+  const navigateAway = async (path: string) => {
+    if (isDirty) {
+      try { await commitChanges(); } catch { /* vista mistókst — farðu samt */ }
+    }
+    navigate(path);
+  };
+
+  if (loading || libLoading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (!bayFile) return <p style={{ color: 'var(--danger)' }}>Reitur finnst ekki.</p>;
 
   const { bay } = bayFile;
@@ -393,8 +419,48 @@ export function BayView() {
 
   return (
     <div>
+      {/* Bay tab strip */}
+      {bayList.length > 1 && (
+        <div style={{
+          display: 'flex', overflowX: 'auto', gap: '2px',
+          borderBottom: '1px solid var(--line)',
+          marginBottom: 'var(--space-4)',
+          paddingBottom: '0',
+        }}>
+          {bayList.map(b => {
+            const isCurrent = b.id === bayId;
+            const flagCount = b.signals.filter(s => s.review_flagged).length;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => navigateAway(`/projects/${projectId}/bays/${b.id}`)}
+                style={{
+                  flexShrink: 0,
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: isCurrent ? 700 : 400,
+                  cursor: 'pointer',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: isCurrent ? '2px solid var(--accent)' : '2px solid transparent',
+                  color: isCurrent ? 'var(--accent)' : 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                  marginBottom: '-1px',
+                }}
+              >
+                {b.display_id}
+                {flagCount > 0 && (
+                  <span style={{ marginLeft: '5px', fontSize: '10px', color: 'var(--danger)', fontWeight: 700 }}>💬{flagCount}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ marginBottom: 'var(--space-2)' }}>
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}`)}>
+        <Button variant="ghost" size="sm" onClick={() => navigateAway(`/projects/${projectId}`)}>
           ← {stationNumber} verkefni
         </Button>
       </div>
@@ -463,6 +529,7 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
@@ -476,6 +543,7 @@ export function BayView() {
             <>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
               <Button size="sm" variant="ghost" onClick={handleReject} disabled={reviewSending} style={{ color: 'var(--danger)' }}>✕ Hafna</Button>
               <Button size="sm" onClick={handleApprove} disabled={reviewSending}>✓ Samþykkja</Button>
             </>
@@ -486,6 +554,7 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
@@ -533,8 +602,10 @@ export function BayView() {
         onUpdate={handleUpdate}
         onBatchUpdate={handleBatchUpdate}
         onDelete={handleDelete}
+        onBatchDelete={handleBatchDelete}
         onDuplicate={handleDuplicate}
         onReorder={handleReorder}
+        onImmediateSave={commitChanges}
       />
 
       {showPicker && (
@@ -553,9 +624,7 @@ export function BayView() {
           onAdd={(signals) => { handleAdd(signals); setShowImport(false); }}
           onClose={() => setShowImport(false)}
           onDownloadTemplate={() =>
-            generateSignalTemplate(() =>
-              api.readJson<SignalLibraryEntry[]>('data/signal_library.json').then(r => r.data)
-            )
+            generateSignalTemplate(() => Promise.resolve(signalLibrary))
           }
         />
       )}

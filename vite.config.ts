@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: '/merkjalisti/',
   plugins: [react()],
+  server: { host: true },
   // @ts-expect-error vitest augments UserConfig at runtime; type merging doesn't land under tsc -b here
   test: {
     environment: 'jsdom',

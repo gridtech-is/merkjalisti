@@ -98,9 +98,12 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
     setIsDirty(true);
   }, []);
 
+  // Only rebuild handlers when bay IDs change (add/remove), not on every signal edit
+  const bayIdKey = useMemo(() => bayFiles.map(f => f.bay.id).join(','), [bayFiles]);
   const bayUpdateHandlers = useMemo(
     () => new Map(bayFiles.map(f => [f.bay.id, handleUpdate(f.bay.id)])),
-    [bayFiles, handleUpdate]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bayIdKey, handleUpdate]
   );
 
   const noop = useCallback(() => {}, []);
@@ -137,10 +140,15 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
     padding: '5px 8px', fontSize: '12px', outline: 'none',
   };
 
-  const bayKeys = [
+  const bayKeys = useMemo(() => [
     ...bayFiles.map(f => ({ key: f.bay.id, label: f.bay.display_id })),
     { key: 'station', label: 'Stöð' },
-  ];
+  ], [bayFiles]);
+
+  const bayFlagCounts = useMemo(
+    () => new Map(bayFiles.map(f => [f.bay.id, f.bay.signals.filter(s => s.review_flagged).length])),
+    [bayFiles]
+  );
 
   const filteredBaySignals = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -199,7 +207,7 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
           marginBottom: 'var(--space-4)',
         }}>
           {bayFiles.map(f => {
-            const flagCount = f.bay.signals.filter(s => s.review_flagged).length;
+            const flagCount = bayFlagCounts.get(f.bay.id) ?? 0;
             return (
               <button
                 key={f.bay.id}
@@ -220,9 +228,24 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
                 )}
               </button>
             );
-          })}
+          }
+        )}
         </div>
       )}
+
+      {/* Stats strip */}
+      <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Reitir', value: bayFiles.length },
+          { label: 'IED búnaður', value: equipment.filter(e => e.category === 'ied').length },
+          { label: 'Heildar merki', value: totalAll },
+        ].map(({ label, value }) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 14px', background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', minWidth: '80px' }}>
+            <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent)', lineHeight: 1.2 }}>{value}</span>
+            <span style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px', whiteSpace: 'nowrap' }}>{label}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Filter row 1 */}
       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
