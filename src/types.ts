@@ -308,3 +308,10 @@ export interface GitHubConfig {
   owner: string;
   repo: string;
 }
+
+// ─── Zenon config ──────────────────────────────────────────────────────────
+
+export interface ZenonConfig {
+  driver_name: string;
+  net_addr: Record<string, number>;
+}
