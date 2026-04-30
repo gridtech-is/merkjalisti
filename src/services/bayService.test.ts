@@ -1,6 +1,6 @@
 // src/services/bayService.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createBay, listBays, listBayFiles, renameStation } from './bayService';
+import { createBay, listBays, listBayFiles, renameStation, invalidateBayCache } from './bayService';
 import type { Bay } from '../types';
 
 const mockApi = {
@@ -9,7 +9,10 @@ const mockApi = {
   listDirectory: vi.fn(),
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  invalidateBayCache('proj-123');
+});
 
 describe('createBay', () => {
   it('writes bay json with station_number-derived display_id', async () => {

@@ -195,7 +195,10 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
   }, [stationSignals, search, selectedBays, phaseFilter, sourceFilter, alarmOnly, untestedOnly]);
 
   const totalVisible = filteredBaySignals.reduce((n, { signals }) => n + signals.length, 0) + filteredStationSignals.length;
-  const totalAll = bayFiles.flatMap(f => f.bay.signals).length + stationSignals.length;
+  const totalAll = useMemo(
+    () => bayFiles.reduce((n, f) => n + f.bay.signals.length, 0) + stationSignals.length,
+    [bayFiles, stationSignals],
+  );
 
   if (loading || libLoading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
   if (error) return <p style={{ color: 'var(--danger)' }}>{error}</p>;

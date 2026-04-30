@@ -15,6 +15,21 @@ export interface BayFile {
   sha: string;
 }
 
+// In-memory cache so BayView and OverviewTab don't re-fetch all bays on every mount.
+// Each project's list is cached for 30 seconds; writes invalidate or update in-place.
+const bayCache = new Map<string, { files: BayFile[]; ts: number }>();
+const CACHE_TTL_MS = 30_000;
+
+export function invalidateBayCache(projectId: string): void {
+  bayCache.delete(projectId);
+}
+
+function updateBayInCache(projectId: string, updated: BayFile): void {
+  const entry = bayCache.get(projectId);
+  if (!entry) return;
+  entry.files = entry.files.map(f => f.bay.id === updated.bay.id ? updated : f);
+}
+
 export async function createBay(
   api: GitHubApi,
   projectId: string,
@@ -43,39 +58,14 @@ export async function createBay(
   const path = `projects/${projectId}/bays/${id}.json`;
   const msg = `[DESIGN] Nýr reitur: ${bay.display_id}`;
   const sha = await api.writeJson(path, bay, null, msg);
+  invalidateBayCache(projectId);
   return { bay, sha };
 }
 
-export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]> {
-  let entries: string[];
-  try {
-    entries = await api.listDirectory(`projects/${projectId}/bays`);
-  } catch {
-    return [];
-  }
-  const jsonFiles = entries.filter(e => e.endsWith('.json'));
-  const results = await Promise.allSettled(
-    jsonFiles.map(f => api.readJson<Bay>(`projects/${projectId}/bays/${f}`))
-  );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ data: Bay; sha: string }> => r.status === 'fulfilled')
-    .map(r => {
-      const data = r.value.data;
-      return {
-        ...data,
-        status: data.status ?? ('DRAFT' as const),
-        review: data.review ?? null,
-        signals: data.signals.map(s => ({
-          ...s,
-          review_flagged: s.review_flagged ?? false,
-          review_comment: s.review_comment ?? null,
-        })),
-      };
-    })
-    .filter(b => b.status !== 'DELETED');
-}
-
 export async function listBayFiles(api: GitHubApi, projectId: string): Promise<BayFile[]> {
+  const cached = bayCache.get(projectId);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.files;
+
   let entries: string[];
   try {
     entries = await api.listDirectory(`projects/${projectId}/bays`);
@@ -86,7 +76,7 @@ export async function listBayFiles(api: GitHubApi, projectId: string): Promise<B
   const results = await Promise.allSettled(
     jsonFiles.map(f => api.readJson<Bay>(`projects/${projectId}/bays/${f}`))
   );
-  return results
+  const files = results
     .filter((r): r is PromiseFulfilledResult<{ data: Bay; sha: string }> => r.status === 'fulfilled')
     .map(r => {
       const data = r.value.data;
@@ -103,6 +93,13 @@ export async function listBayFiles(api: GitHubApi, projectId: string): Promise<B
       return { bay, sha: r.value.sha };
     })
     .filter(f => f.bay.status !== 'DELETED');
+
+  bayCache.set(projectId, { files, ts: Date.now() });
+  return files;
+}
+
+export async function listBays(api: GitHubApi, projectId: string): Promise<Bay[]> {
+  return (await listBayFiles(api, projectId)).map(f => f.bay);
 }
 
 export async function loadBay(api: GitHubApi, projectId: string, bayId: string): Promise<BayFile> {
@@ -167,7 +164,9 @@ export async function saveBay(
   const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
   const msg = `[${phase}] Vista reit: ${bayFile.bay.display_id}`;
   const sha = await api.writeJson(path, bayFile.bay, bayFile.sha, msg);
-  return { ...bayFile, sha };
+  const updated = { ...bayFile, sha };
+  updateBayInCache(projectId, updated);
+  return updated;
 }
 
 export async function sendBayForReview(
@@ -198,7 +197,9 @@ export async function sendBayForReview(
     field: null, old_value: 'DRAFT', new_value: 'IN_REVIEW',
     comment: `Reitur sendur í yfirferð: ${bayFile.bay.display_id}`,
   });
-  return { bay: updated, sha };
+  const result = { bay: updated, sha };
+  updateBayInCache(projectId, result);
+  return result;
 }
 
 export async function approveBay(
@@ -230,7 +231,9 @@ export async function approveBay(
     field: null, old_value: 'IN_REVIEW', new_value: 'LOCKED',
     comment: `Reitur samþykktur: ${bayFile.bay.display_id}`,
   });
-  return { bay: updated, sha };
+  const result = { bay: updated, sha };
+  updateBayInCache(projectId, result);
+  return result;
 }
 
 export async function rejectBay(
@@ -262,7 +265,9 @@ export async function rejectBay(
     field: null, old_value: 'IN_REVIEW', new_value: 'DRAFT',
     comment: `Reitur hafnaður: ${bayFile.bay.display_id}. ${comment}`,
   });
-  return { bay: updated, sha };
+  const result = { bay: updated, sha };
+  updateBayInCache(projectId, result);
+  return result;
 }
 
 export async function deleteBay(
@@ -274,6 +279,7 @@ export async function deleteBay(
   const updated: Bay = { ...bayFile.bay, status: 'DELETED' };
   const path = `projects/${projectId}/bays/${bayFile.bay.id}.json`;
   await api.writeJson(path, updated, bayFile.sha, `[DESIGN] Eyða reit: ${bayFile.bay.display_id}`);
+  invalidateBayCache(projectId);
   await appendChange(api, projectId, {
     user: deletedBy, phase: 'DESIGN', type: 'PHASE_CHANGED',
     target_id: bayFile.bay.id, target_type: 'bay',
@@ -287,20 +293,14 @@ export async function renameStation(
   projectId: string,
   newStationNumber: string
 ): Promise<void> {
-  let entries: string[];
-  try {
-    entries = await api.listDirectory(`projects/${projectId}/bays`);
-  } catch {
-    return;
-  }
-  const jsonFiles = entries.filter(e => e.endsWith('.json'));
-  for (const file of jsonFiles) {
-    const path = `projects/${projectId}/bays/${file}`;
-    const { data: bay, sha } = await api.readJson<Bay>(path);
-    const updated: Bay = {
-      ...bay,
-      display_id: `${newStationNumber}${bay.bay_name}`,
-    };
+  // Use cached files if available to skip the directory listing + individual reads
+  const cached = bayCache.get(projectId);
+  const files = cached ? cached.files : await listBayFiles(api, projectId);
+
+  for (const { bay, sha } of files) {
+    const updated: Bay = { ...bay, display_id: `${newStationNumber}${bay.bay_name}` };
+    const path = `projects/${projectId}/bays/${bay.id}.json`;
     await api.writeJson(path, updated, sha, `Uppfæra display_id eftir stöðvar-númer breytingu`);
   }
+  invalidateBayCache(projectId);
 }
