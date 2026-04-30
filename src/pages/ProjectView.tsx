@@ -12,12 +12,13 @@ import { ImportScdModal } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, BaySignal, ApparatusType, ProjectPhase, BayStatus, IedFcda } from '../types';
 import { StationSignalsTab } from '../components/StationSignalsTab';
 import { OverviewTab } from '../components/OverviewTab';
+import { ZenonTab } from '../components/ZenonTab';
 import { loadStation } from '../services/stationService';
 import { parseModel, saveModel, loadIedModel } from '../services/iedModelService';
 import { createTemplateFromIED } from '../services/equipmentTemplateService';
 import { insertDataSetsIntoIcd } from '../services/datasetService';
 
-type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog';
+type Tab = 'bays' | 'equipment' | 'station' | 'overview' | 'changelog' | 'zenon';
 type EqTab = 'apparatus' | 'ied';
 
 function uuid(): string {
@@ -647,6 +648,7 @@ export function ProjectView() {
     { id: 'station', label: `Stöðvarmerki${stationIndicator}` },
     { id: 'overview', label: 'Heildar listi' },
     { id: 'changelog', label: 'Breytingasaga' },
+    { id: 'zenon', label: 'Zenon' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -1203,6 +1205,14 @@ export function ProjectView() {
         <OverviewTab projectId={projectId} projectName={project.name} projectPhase={project.phase} />
       )}
       {tab === 'changelog' && projectId && <ChangelogTab projectId={projectId} />}
+      {tab === 'zenon' && projectId && project && (
+        <ZenonTab
+          projectId={projectId}
+          projectName={project.name}
+          ieds={ieds}
+          bays={bays}
+        />
+      )}
     </div>
   );
 }
