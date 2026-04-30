@@ -114,6 +114,16 @@ describe('exportZenonXml', () => {
     expect(xml).toContain('<Apartment ShortName="zenOn(R) driver list"');
     expect(xml).toContain('<Modul>IEC850</Modul>');
   });
+
+  it('uses netAddrMap for NetAddr when IED is in map', () => {
+    const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1', { IED1: 5 });
+    expect(xml).toContain('<NetAddr>5</NetAddr>');
+  });
+
+  it('falls back to 0 when IED not in netAddrMap', () => {
+    const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1', {});
+    expect(xml).toContain('<NetAddr>0</NetAddr>');
+  });
 });
 
 describe('exportZenonReactionMatrix', () => {

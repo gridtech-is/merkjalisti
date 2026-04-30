@@ -360,7 +360,12 @@ function typeLimitsBlock(n: number, limitValue: string, isMax: boolean, color: s
   return `<Limits_${n} NODE="zenOn(R) embedded object">${limitsBaseContent('', limitValue, isMax, color, false, false, '')}</Limits_${n}>`;
 }
 
-function variableXml(sig: BaySignal, typeInfo: ZenonTypeInfo, bayName: string): string {
+function variableXml(
+  sig: BaySignal,
+  typeInfo: ZenonTypeInfo,
+  bayName: string,
+  netAddrMap: Record<string, number> = {},
+): string {
   const name = safeVarName(bayName, sig.equipment_code, sig.signal_name);
   const symbAddr = buildSymbAddr(sig);
   const matrixVal = sig.state_id ? xmlEscape(sig.state_id) : '';
@@ -384,7 +389,7 @@ function variableXml(sig: BaySignal, typeInfo: ZenonTypeInfo, bayName: string): 
     `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
     `<AlternateValue>0.0000000000</AlternateValue>` +
     `<RecourcesLabel>@${xmlEscape(sig.signal_name)}</RecourcesLabel>` +
-    `<NetAddr>0</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
+    `<NetAddr>${netAddrMap[sig.iec61850_ied ?? ''] ?? 0}</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
     `<BitAddr>0</BitAddr><Alignment>0</Alignment><StringLength>5</StringLength>` +
     `<SymbAddr>${xmlEscape(symbAddr)}</SymbAddr>` +
     `<ID_DriverTyp>8</ID_DriverTyp>` +
@@ -519,6 +524,7 @@ export function exportZenonXml(
   _signalStates: SignalState[],
   driverName: string,
   bayName: string,
+  netAddrMap: Record<string, number> = {},
 ): string {
   const eligible = signals.filter(
     s => s.iec61850_ied && s.iec61850_ld && s.iec61850_ln && s.iec61850_do,
@@ -530,7 +536,7 @@ export function exportZenonXml(
   for (const sig of eligible) {
     const typeInfo = CDC_TYPE_INFO[sig.iec61850_cdc ?? ''] ?? BOOL_TYPE;
     usedTypeIds.add(typeInfo.typeId);
-    varXmls.push(variableXml(sig, typeInfo, bayName));
+    varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap));
   }
 
   const typeXmls = ALL_ZENON_TYPES
@@ -676,8 +682,16 @@ export function exportZenonReactionMatrix(
   return lines.join('\n');
 }
 
-export function exportZenonBayVariables(bay: Bay, signalStates: SignalState[], driverName = 'IEC850'): void {
-  downloadXml(`${bay.display_id}-zenon-variables.xml`, exportZenonXml(bay.signals, signalStates, driverName, bay.display_id));
+export function exportZenonBayVariables(
+  bay: Bay,
+  signalStates: SignalState[],
+  driverName = 'IEC850',
+  netAddrMap: Record<string, number> = {},
+): void {
+  downloadXml(
+    `${bay.display_id}-zenon-variables.xml`,
+    exportZenonXml(bay.signals, signalStates, driverName, bay.display_id, netAddrMap),
+  );
 }
 
 export function exportZenonBayRematrix(bay: Bay, signalStates: SignalState[]): void {
@@ -689,9 +703,18 @@ export function exportZenonBay(bay: Bay, signalStates: SignalState[], driverName
   exportZenonBayRematrix(bay, signalStates);
 }
 
-export function exportZenonAllBaysVariables(bays: Bay[], projectName: string, signalStates: SignalState[], driverName = 'IEC850'): void {
+export function exportZenonAllBaysVariables(
+  bays: Bay[],
+  projectName: string,
+  signalStates: SignalState[],
+  driverName = 'IEC850',
+  netAddrMap: Record<string, number> = {},
+): void {
   const all = bays.flatMap(b => b.signals);
-  downloadXml(`${projectName}-zenon-variables.xml`, exportZenonXml(all, signalStates, driverName, projectName));
+  downloadXml(
+    `${projectName}-zenon-variables.xml`,
+    exportZenonXml(all, signalStates, driverName, projectName, netAddrMap),
+  );
 }
 
 export function exportZenonAllBaysRematrix(bays: Bay[], projectName: string, signalStates: SignalState[]): void {
