@@ -37,7 +37,7 @@ const NO_STATES: SignalState[] = [];
 describe('exportZenonXml', () => {
   it('generates a Variable element with correct SymbAddr', () => {
     const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<Name>Q0_CB_READY</Name>');
+    expect(xml).toContain('<Name>BAY1_Q0_CB_READY</Name>');
     expect(xml).toContain('DriverID="4"');
     expect(xml).toContain('<SymbAddr>Server_IED1!LD0/GGIO22/Ind/stVal[ST]</SymbAddr>');
     expect(xml).toContain('TypeID="8"');
@@ -80,7 +80,7 @@ describe('exportZenonXml', () => {
 
   it('sanitizes variable name: dots become underscores', () => {
     const xml = exportZenonXml([sig({ equipment_code: 'Q0', signal_name: 'CB.READY' })], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<Name>Q0_CB_READY</Name>');
+    expect(xml).toContain('<Name>BAY1_Q0_CB_READY</Name>');
   });
 
   it('includes ClassName in Limits_1 when is_alarm and alarm_class set', () => {
@@ -186,7 +186,7 @@ describe('exportZenonReactionMatrix', () => {
     expect(xml).toContain('<KlasseIdx>1</KlasseIdx>');
   });
 
-  it('uses English text from SignalState; falls back to is; falls back to key', () => {
+  it('uses @key as Text in state blocks', () => {
     const st = state({
       states: {
         '00': { key: 'X_OFF', is: 'SLÖKKT', en: 'OFF' },
@@ -194,8 +194,8 @@ describe('exportZenonReactionMatrix', () => {
       },
     });
     const xml = exportZenonReactionMatrix([sig()], [st]);
-    expect(xml).toContain('<Text>OFF</Text>');
-    expect(xml).toContain('<Text>KVEIKT</Text>');
+    expect(xml).toContain('<Text>@X_OFF</Text>');
+    expect(xml).toContain('<Text>@X_ON</Text>');
   });
 
   it('uses version 15000', () => {

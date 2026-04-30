@@ -11,7 +11,7 @@ import { TestingPanel } from '../components/TestingPanel';
 import { SignalPickerModal } from '../components/SignalFormModal';
 import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
-import { exportBayToExcel, exportZenonBay } from '../services/exportService';
+import { exportBayToExcel, exportZenonBayVariables, exportZenonBayRematrix } from '../services/exportService';
 import { appendChange } from '../services/changelogService';
 import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, IedFcda } from '../types';
 import { loadIedModel } from '../services/iedModelService';
@@ -529,7 +529,8 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
@@ -543,7 +544,8 @@ export function BayView() {
             <>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={handleReject} disabled={reviewSending} style={{ color: 'var(--danger)' }}>✕ Hafna</Button>
               <Button size="sm" onClick={handleApprove} disabled={reviewSending}>✓ Samþykkja</Button>
             </>
@@ -554,7 +556,8 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBay(bay, signalStates)}>↓ zenon</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>

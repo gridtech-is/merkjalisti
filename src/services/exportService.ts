@@ -312,8 +312,8 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function safeVarName(code: string, name: string): string {
-  return `${code}_${name}`
+function safeVarName(bayName: string, code: string, name: string): string {
+  return `${bayName}_${code}_${name}`
     .replace(/[^A-Za-z0-9_]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
@@ -361,7 +361,7 @@ function typeLimitsBlock(n: number, limitValue: string, isMax: boolean, color: s
 }
 
 function variableXml(sig: BaySignal, typeInfo: ZenonTypeInfo, bayName: string): string {
-  const name = safeVarName(sig.equipment_code, sig.signal_name);
+  const name = safeVarName(bayName, sig.equipment_code, sig.signal_name);
   const symbAddr = buildSymbAddr(sig);
   const matrixVal = sig.state_id ? xmlEscape(sig.state_id) : '';
   const isBool = typeInfo.typeId === BOOL_TYPE.typeId;
@@ -647,7 +647,7 @@ export function exportZenonReactionMatrix(
       lines.push(spiStateBlock(0, '', 640, 0, 0, 0));
       DP_STATE_ORDER.forEach((key, idx) => {
         const entry = stateDef.states[key];
-        const text = entry?.en ?? entry?.is ?? key;
+        const text = entry?.key ? `@${entry.key}` : key;
         const klasse = aMap.get(key) ?? 0;
         const isNormal = DP_NORMAL_KEYS.has(key);
         const status = !isNormal || klasse > 0 ? 641 : 640;
@@ -657,7 +657,7 @@ export function exportZenonReactionMatrix(
       lines.push(spiStateBlock(0, '', 0, 0, 0, 0));
       SP_KEYS.forEach((key, idx) => {
         const entry = stateDef.states[key];
-        const text = entry?.en ?? entry?.is ?? key;
+        const text = entry?.key ? `@${entry.key}` : key;
         const reaWert = parseInt(key, 2);
         const klasse = aMap.get(key) ?? 0;
         const status = klasse > 0 ? 513 : 512;
@@ -676,34 +676,30 @@ export function exportZenonReactionMatrix(
   return lines.join('\n');
 }
 
-export function exportZenonBay(
-  bay: Bay,
-  signalStates: SignalState[],
-  driverName = 'IEC850',
-): void {
-  downloadXml(
-    `${bay.display_id}-zenon-variables.xml`,
-    exportZenonXml(bay.signals, signalStates, driverName, bay.display_id),
-  );
-  downloadXml(
-    `${bay.display_id}-zenon-rematrix.xml`,
-    exportZenonReactionMatrix(bay.signals, signalStates),
-  );
+export function exportZenonBayVariables(bay: Bay, signalStates: SignalState[], driverName = 'IEC850'): void {
+  downloadXml(`${bay.display_id}-zenon-variables.xml`, exportZenonXml(bay.signals, signalStates, driverName, bay.display_id));
 }
 
-export function exportZenonAllBays(
-  bays: Bay[],
-  projectName: string,
-  signalStates: SignalState[],
-  driverName = 'IEC850',
-): void {
+export function exportZenonBayRematrix(bay: Bay, signalStates: SignalState[]): void {
+  downloadXml(`${bay.display_id}-zenon-rematrix.xml`, exportZenonReactionMatrix(bay.signals, signalStates));
+}
+
+export function exportZenonBay(bay: Bay, signalStates: SignalState[], driverName = 'IEC850'): void {
+  exportZenonBayVariables(bay, signalStates, driverName);
+  exportZenonBayRematrix(bay, signalStates);
+}
+
+export function exportZenonAllBaysVariables(bays: Bay[], projectName: string, signalStates: SignalState[], driverName = 'IEC850'): void {
   const all = bays.flatMap(b => b.signals);
-  downloadXml(
-    `${projectName}-zenon-variables.xml`,
-    exportZenonXml(all, signalStates, driverName, projectName),
-  );
-  downloadXml(
-    `${projectName}-zenon-rematrix.xml`,
-    exportZenonReactionMatrix(all, signalStates),
-  );
+  downloadXml(`${projectName}-zenon-variables.xml`, exportZenonXml(all, signalStates, driverName, projectName));
+}
+
+export function exportZenonAllBaysRematrix(bays: Bay[], projectName: string, signalStates: SignalState[]): void {
+  const all = bays.flatMap(b => b.signals);
+  downloadXml(`${projectName}-zenon-rematrix.xml`, exportZenonReactionMatrix(all, signalStates));
+}
+
+export function exportZenonAllBays(bays: Bay[], projectName: string, signalStates: SignalState[], driverName = 'IEC850'): void {
+  exportZenonAllBaysVariables(bays, projectName, signalStates, driverName);
+  exportZenonAllBaysRematrix(bays, projectName, signalStates);
 }

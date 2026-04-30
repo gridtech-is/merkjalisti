@@ -6,7 +6,7 @@ import { useLibrary } from '../context/LibraryContext';
 import { listBayFiles, saveBay, type BayFile } from '../services/bayService';
 import { loadStation } from '../services/stationService';
 import { useAutoCommit } from '../github/useAutoCommit';
-import { exportAllBaysToExcel, exportZenonAllBays } from '../services/exportService';
+import { exportAllBaysToExcel, exportZenonAllBaysVariables, exportZenonAllBaysRematrix } from '../services/exportService';
 import { Button } from './ui';
 import { SignalTable } from './SignalTable';
 import type { Bay, BaySignal, Equipment, ProjectPhase } from '../types';
@@ -117,14 +117,17 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
     exportAllBaysToExcel([...bayFiles.map(f => f.bay), syntheticStationBay], projectName);
   };
 
-  const handleExportZenon = () => {
+  const allBaysWithStation = (): Bay[] => {
     const syntheticStationBay: Bay = {
       id: 'station', voltage_level: '', bay_name: 'Stöðvarmerki',
       display_id: 'STÖÐ', description: null, equipment_ids: [],
       signals: stationSignals, status: 'DRAFT', review: null,
     };
-    exportZenonAllBays([...bayFiles.map(f => f.bay), syntheticStationBay], projectName, states);
+    return [...bayFiles.map(f => f.bay), syntheticStationBay];
   };
+
+  const handleExportZenonVar = () => exportZenonAllBaysVariables(allBaysWithStation(), projectName, states);
+  const handleExportZenonRema = () => exportZenonAllBaysRematrix(allBaysWithStation(), projectName, states);
 
   const toggleBayFilter = (key: string) => {
     setSelectedBays(prev => {
@@ -308,7 +311,8 @@ export function OverviewTab({ projectId, projectName, projectPhase }: Props) {
         </span>
         <Button size="sm" variant="ghost" onClick={() => commitAll()} disabled={!isDirty}>Vista núna</Button>
         <Button size="sm" variant="ghost" onClick={handleExport} disabled={totalAll === 0}>↓ Excel</Button>
-        <Button size="sm" variant="ghost" onClick={handleExportZenon} disabled={totalAll === 0}>↓ zenon</Button>
+        <Button size="sm" variant="ghost" onClick={handleExportZenonVar} disabled={totalAll === 0}>↓ zenon var</Button>
+        <Button size="sm" variant="ghost" onClick={handleExportZenonRema} disabled={totalAll === 0}>↓ zenon rema</Button>
       </div>
 
       {/* Per-bay editable sections */}
