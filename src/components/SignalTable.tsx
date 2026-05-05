@@ -694,7 +694,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
               const iecInvalid = iecInvalidIds.has(sig.id);
               return (
                 <React.Fragment key={sig.id}>
-                  {!!sig.group_label && (
+                  {!!sig.group_label && sig.group_label !== visibleSignals[i - 1]?.group_label && (
                     <tr>
                       <td colSpan={99} style={{
                         padding: '4px 10px',
