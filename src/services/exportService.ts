@@ -319,6 +319,39 @@ function safeVarName(bayName: string, code: string, name: string): string {
     .replace(/^_|_$/g, '');
 }
 
+export function zenonTagCategory(
+  sig: BaySignal,
+  apparatusTypeMap: Record<string, ApparatusType> = {},
+): string {
+  const ln = (sig.iec61850_ln ?? '').toUpperCase();
+  const cdc = (sig.iec61850_cdc ?? '').toUpperCase();
+
+  if (ln.startsWith('XCBR')) return 'CIRCUIT BREAKER';
+
+  if (ln.startsWith('XSWI')) {
+    return apparatusTypeMap[sig.equipment_code] === 'Jarðrofi' ? 'EARTHING SWITCH' : 'DISCONNECTOR';
+  }
+
+  if (cdc === 'MV' || cdc === 'CMV' || cdc === 'SAV' || cdc === 'INS' || cdc === 'INC') {
+    return 'MEASUREMENT';
+  }
+
+  if (ln.startsWith('MMXU') || ln.startsWith('MMTR') || ln.startsWith('MSQI') || ln.startsWith('MMTN')) {
+    return 'MEASUREMENT';
+  }
+
+  if (ln.startsWith('LCCH')) return 'NETWORK';
+
+  if (sig.iec61850_do?.toUpperCase() === 'LOC') return 'LOCAL/REMOTE';
+
+  if (/^P[A-Z]/.test(ln) || ln.startsWith('LGOS') || ln.startsWith('LSVS') ||
+      ln.startsWith('RBRF') || ln.startsWith('RREC') || ln.startsWith('RDRE') || ln.startsWith('RDIR')) {
+    return 'PROTECTION';
+  }
+
+  return 'PROTECTION';
+}
+
 function buildSymbAddr(sig: BaySignal): string {
   const prefix = sig.iec61850_ln_prefix ?? '';
   const inst = sig.iec61850_ln_inst ?? '';
@@ -365,12 +398,14 @@ function variableXml(
   typeInfo: ZenonTypeInfo,
   bayName: string,
   netAddrMap: Record<string, number> = {},
+  apparatusTypeMap: Record<string, ApparatusType> = {},
 ): string {
   const name = safeVarName(bayName, sig.equipment_code, sig.signal_name);
   const symbAddr = buildSymbAddr(sig);
   const matrixVal = sig.state_id ? xmlEscape(sig.state_id) : '';
   const isBool = typeInfo.typeId === BOOL_TYPE.typeId;
-  const iedOrCode = sig.iec61850_ied ?? sig.equipment_code;
+  const cat = sig.group_label?.trim() || zenonTagCategory(sig, apparatusTypeMap);
+  const tagname = `${bayName} @${cat}`;
   const hasAlarm = sig.is_alarm && sig.alarm_class != null;
   const className = hasAlarm ? String(sig.alarm_class) : '';
 
@@ -385,7 +420,7 @@ function variableXml(
     limitsBlocks +
     `<ID_ComplexVariable>0</ID_ComplexVariable>` +
     `<Name>${xmlEscape(name)}</Name>` +
-    `<Tagname>${xmlEscape(iedOrCode)} @${xmlEscape(bayName)}</Tagname>` +
+    `<Tagname>${xmlEscape(tagname)}</Tagname>` +
     `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
     `<AlternateValue>0.0000000000</AlternateValue>` +
     `<RecourcesLabel>@${xmlEscape(sig.signal_name)}</RecourcesLabel>` +
@@ -525,6 +560,7 @@ export function exportZenonXml(
   driverName: string,
   bayName: string,
   netAddrMap: Record<string, number> = {},
+  apparatusTypeMap: Record<string, ApparatusType> = {},
 ): string {
   const eligible = signals.filter(
     s => s.iec61850_ied && s.iec61850_ld && s.iec61850_ln && s.iec61850_do,
@@ -536,7 +572,7 @@ export function exportZenonXml(
   for (const sig of eligible) {
     const typeInfo = CDC_TYPE_INFO[sig.iec61850_cdc ?? ''] ?? BOOL_TYPE;
     usedTypeIds.add(typeInfo.typeId);
-    varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap));
+    varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap, apparatusTypeMap));
   }
 
   const typeXmls = ALL_ZENON_TYPES
@@ -687,10 +723,11 @@ export function exportZenonBayVariables(
   signalStates: SignalState[],
   driverName = 'IEC850',
   netAddrMap: Record<string, number> = {},
+  apparatusTypeMap: Record<string, ApparatusType> = {},
 ): void {
   downloadXml(
     `${bay.display_id}-zenon-variables.xml`,
-    exportZenonXml(bay.signals, signalStates, driverName, bay.display_id, netAddrMap),
+    exportZenonXml(bay.signals, signalStates, driverName, bay.display_id, netAddrMap, apparatusTypeMap),
   );
 }
 
@@ -709,11 +746,12 @@ export function exportZenonAllBaysVariables(
   signalStates: SignalState[],
   driverName = 'IEC850',
   netAddrMap: Record<string, number> = {},
+  apparatusTypeMap: Record<string, ApparatusType> = {},
 ): void {
   const all = bays.flatMap(b => b.signals);
   downloadXml(
     `${projectName}-zenon-variables.xml`,
-    exportZenonXml(all, signalStates, driverName, projectName, netAddrMap),
+    exportZenonXml(all, signalStates, driverName, projectName, netAddrMap, apparatusTypeMap),
   );
 }
 

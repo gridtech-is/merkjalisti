@@ -1,5 +1,13 @@
 // src/types.ts
 
+// ─── Zenon tag categories (Flokkar) ───────────────────────────────────────
+
+export interface ZenonTagCategory {
+  id: string;
+  key: string;      // zenon @key, e.g. "PROTECTION" (= name_en)
+  name_is: string;  // Icelandic, e.g. "Vörn"
+}
+
 // ─── Signal units ──────────────────────────────────────────────────────────
 
 export interface SignalUnit {

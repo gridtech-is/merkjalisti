@@ -6,11 +6,12 @@ import { listProjects } from '../services/projectService';
 import { listBays, loadBay, saveBay, listBayTemplates } from '../services/bayService';
 import { listEquipmentTemplates, loadEquipmentTemplate, saveEquipmentTemplate, type EquipmentTemplateFile } from '../services/equipmentTemplateService';
 import { listSignalUnits, saveSignalUnits } from '../services/signalUnitService';
+import { listZenonTagCategories, saveZenonTagCategories } from '../services/zenonTagCategoryService';
 import { Button } from '../components/ui';
 import { EquipmentTemplateEditor } from '../components/EquipmentTemplateEditor';
-import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap, SignalUnit, SignalCategory } from '../types';
+import type { SignalLibraryEntry, BaySignal, Bay, Project, AlarmClass, SourceType, EquipmentTemplate, BayTemplate, SignalState, StateAlarmMap, SignalUnit, SignalCategory, ZenonTagCategory } from '../types';
 
-type LibTab = 'signals' | 'states' | 'units' | 'templates';
+type LibTab = 'signals' | 'states' | 'units' | 'templates' | 'categories';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -1210,6 +1211,140 @@ function TemplatesTab() {
   );
 }
 
+function FlorkarTab() {
+  const { api } = useApi();
+  const { zenonTagCategories: ctxCats, zenonTagCategoriesSha: ctxSha, updateZenonTagCategories } = useLibrary();
+  const [cats, setCats] = useState<ZenonTagCategory[]>([]);
+  const [sha, setSha] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  type CatForm = { key: string; name_is: string };
+  const emptyForm = (): CatForm => ({ key: '', name_is: '' });
+  const [form, setForm] = useState<CatForm>(emptyForm());
+
+  useEffect(() => {
+    if (ctxCats.length > 0 || ctxSha) {
+      setCats(ctxCats); setSha(ctxSha); setLoading(false);
+    } else {
+      listZenonTagCategories(api)
+        .then(({ categories, sha: s }) => { setCats(categories); setSha(s); })
+        .finally(() => setLoading(false));
+    }
+  }, [api, ctxCats, ctxSha]);
+
+  const openNew = () => { setForm(emptyForm()); setEditingId(null); setModalOpen(true); };
+  const openEdit = (c: ZenonTagCategory) => {
+    setForm({ key: c.key, name_is: c.name_is });
+    setEditingId(c.id); setModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.key.trim() || !form.name_is.trim()) return;
+    setSaving(true);
+    try {
+      const built: ZenonTagCategory = {
+        id: editingId ?? crypto.randomUUID(),
+        key: form.key.trim().toUpperCase(),
+        name_is: form.name_is.trim(),
+      };
+      const next = editingId === null ? [...cats, built] : cats.map(c => c.id === editingId ? built : c);
+      const newSha = await saveZenonTagCategories(api, next, sha, editingId ? `Uppfæra flokk: ${built.key}` : `Nýr flokkur: ${built.key}`);
+      setCats(next); setSha(newSha);
+      updateZenonTagCategories(next, newSha);
+      setModalOpen(false);
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    const next = cats.filter(c => c.id !== id);
+    const label = cats.find(c => c.id === id)?.key ?? id;
+    const newSha = await saveZenonTagCategories(api, next, sha, `Eyða flokki: ${label}`);
+    setCats(next); setSha(newSha);
+    updateZenonTagCategories(next, newSha);
+    setDeletingId(null);
+  };
+
+  const cell: React.CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--line-muted)', fontSize: '13px', verticalAlign: 'middle' };
+  const head: React.CSSProperties = { ...cell, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--surface-alt)', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1 };
+  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box' as const, background: 'var(--surface-alt)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '6px 8px', fontSize: '13px', outline: 'none' };
+
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Hleður...</p>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+        <Button size="sm" onClick={openNew}>+ Nýr flokkur</Button>
+        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{cats.length} flokkar</span>
+      </div>
+
+      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', maxWidth: '500px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {['Lykill (key)', 'Heiti (IS)', ''].map(h => <th key={h} style={head}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {cats.length === 0 && (
+              <tr><td colSpan={3} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engir flokkar skráðir</td></tr>
+            )}
+            {cats.map((c, i) => (
+              <tr key={c.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+                <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>@{c.key}</td>
+                <td style={cell}>{c.name_is}</td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                  {deletingId === c.id ? (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--danger)' }}>Eyða?</span>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)}>Já</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDeletingId(null)}>Nei</Button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>✏</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDeletingId(c.id)}>🗑</Button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', padding: 'var(--space-6)', minWidth: 320 }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: 'var(--space-4)' }}>
+              {editingId ? 'Breyta flokki' : 'Nýr flokkur'}
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Lykill (key) — zenon @KEY</label>
+                <input style={inp} value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value }))} placeholder="PROTECTION" />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Heiti á íslensku</label>
+                <input style={inp} value={form.name_is} onChange={e => setForm(f => ({ ...f, name_is: e.target.value }))} placeholder="Vörn" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+              <Button size="sm" variant="ghost" onClick={() => setModalOpen(false)}>Hætta við</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || !form.key.trim() || !form.name_is.trim()}>
+                {saving ? 'Vista...' : 'Vista'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LibraryView() {
   const [tab, setTab] = useState<LibTab>('signals');
 
@@ -1231,12 +1366,14 @@ export function LibraryView() {
         <button type="button" style={tabStyle('states')} onClick={() => setTab('states')}>Stöður</button>
         <button type="button" style={tabStyle('units')} onClick={() => setTab('units')}>Einingar</button>
         <button type="button" style={tabStyle('templates')} onClick={() => setTab('templates')}>Sniðmát</button>
+        <button type="button" style={tabStyle('categories')} onClick={() => setTab('categories')}>Flokkar</button>
       </div>
 
       {tab === 'signals' && <SignalsTab />}
       {tab === 'states' && <StatesTab />}
       {tab === 'units' && <UnitsTab />}
       {tab === 'templates' && <TemplatesTab />}
+      {tab === 'categories' && <FlorkarTab />}
     </div>
   );
 }

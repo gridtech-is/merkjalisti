@@ -2,6 +2,7 @@
 import React, { memo, useMemo, useState, useDeferredValue } from 'react';
 import { Button } from './ui';
 import { SignalCommentsModal } from './SignalCommentsModal';
+import { useLibrary } from '../context/LibraryContext';
 import type { BaySignal, Equipment, SignalLibraryEntry, SignalState, StateAlarmMap, AlarmClass, SourceType, IedFcda } from '../types';
 
 const STAT_CLASSES = new Set(['LPHD', 'LGOS', 'LSVS', 'LCCH', 'LTMS', 'LTRK', 'LLN0']);
@@ -146,6 +147,7 @@ const onFocus = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borde
 const onBlurReset = (e: React.FocusEvent<HTMLInputElement>) => (e.target.style.borderColor = 'transparent');
 
 function SignalTableInner({ signals, equipment, library = [], states = [], bayDisplayId = '', iedModels, maxDatasetSize = 1000, onUpdate, onBatchUpdate, onDelete, onBatchDelete, onDuplicate, onReorder, onImmediateSave, hideToolbar = false, showFatSat = false }: Props) {
+  const { zenonTagCategories } = useLibrary();
   const libraryIndex = useMemo(() => new Map(library.filter(e => e.code).map(e => [e.code!, e])), [library]);
   const stateIndex = useMemo(() => new Map(states.map(s => [s.id, s])), [states]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -176,6 +178,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
   const [blockRcb, setBlockRcb] = useState('');
   const [blockDse, setBlockDse] = useState('');
   const [blockEqCode, setBlockEqCode] = useState('');
+  const [blockGroupLabel, setBlockGroupLabel] = useState('');
   const [blockClearFields, setBlockClearFields] = useState<Set<string>>(new Set());
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -326,6 +329,8 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
     else if (blockRcb     !== '') patch.iec61850_rcb      = blockRcb || null;
     if (isClear('dse'))     patch.iec61850_dataset_entry  = null;
     else if (blockDse     !== '') patch.iec61850_dataset_entry = blockDse || null;
+    if (blockGroupLabel === '__CLEAR__') patch.group_label = null;
+    else if (blockGroupLabel !== '') patch.group_label = blockGroupLabel;
     if (onBatchUpdate) {
       onBatchUpdate(ids.map(id => ({ id, patch })));
     } else {
@@ -333,7 +338,7 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
     }
     setBlockIed(''); setBlockLdInst(''); setBlockPrefix(''); setBlockLnClass(''); setBlockInst('');
     setBlockDoName(''); setBlockDaName(''); setBlockFc(''); setBlockDataset('');
-    setBlockRcb(''); setBlockDse(''); setBlockEqCode('');
+    setBlockRcb(''); setBlockDse(''); setBlockEqCode(''); setBlockGroupLabel('');
     setBlockClearFields(new Set());
     setSelected(new Set());
   };
@@ -499,6 +504,15 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
             <select value={blockIed} onChange={e => setBlockIed(e.target.value)} style={{ ...blockSelectStyle, minWidth: '130px' }}>
               <option value="">— óbreytt —</option>
               {iedOptions.map(e => <option key={e.id} value={e.code}>{e.code}</option>)}
+            </select>
+          </label>
+          {/* Flokkur */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            Flokkur
+            <select value={blockGroupLabel} onChange={e => setBlockGroupLabel(e.target.value)} style={{ ...blockSelectStyle, minWidth: '140px' }}>
+              <option value="">— óbreytt —</option>
+              <option value="__CLEAR__">— hreinsa —</option>
+              {zenonTagCategories.map(c => <option key={c.id} value={c.key}>{c.name_is}</option>)}
             </select>
           </label>
           {([
@@ -731,26 +745,22 @@ function SignalTableInner({ signals, equipment, library = [], states = [], bayDi
                     })()}
                   </td>
                   <td style={{ ...cell, width: '80px', padding: '2px 6px' }}>
-                    <input
+                    <select
                       style={{
                         ...eInput,
                         width: '100%',
                         fontSize: '11px',
-                        color: 'var(--accent)',
+                        color: sig.group_label ? 'var(--accent)' : 'var(--text-secondary)',
                         fontWeight: sig.group_label ? 600 : 400,
                         border: '1px solid var(--line)',
                         background: sig.group_label ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
                       }}
-                      defaultValue={sig.group_label ?? ''}
-                      key={`gl-${sig.id}`}
-                      placeholder="hópur..."
-                      onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
-                      onBlur={e => {
-                        e.target.style.borderColor = 'var(--line)';
-                        onUpdate(sig.id, { group_label: e.target.value.trim() || null });
-                      }}
-                      onChange={() => {}}
-                    />
+                      value={sig.group_label ?? ''}
+                      onChange={e => onUpdate(sig.id, { group_label: e.target.value || null })}
+                    >
+                      <option value="">—</option>
+                      {zenonTagCategories.map(c => <option key={c.id} value={c.key}>{c.name_is}</option>)}
+                    </select>
                   </td>
                   <td style={{ ...cell, width: '28px' }}>
                     {onReorder ? (

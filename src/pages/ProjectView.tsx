@@ -1210,6 +1210,7 @@ export function ProjectView() {
           projectId={projectId}
           projectName={project.name}
           ieds={ieds}
+          apparatus={apparatus}
           bays={bays}
         />
       )}

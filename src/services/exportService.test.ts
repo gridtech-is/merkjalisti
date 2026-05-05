@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { exportZenonXml, exportZenonReactionMatrix } from './exportService';
-import type { BaySignal, SignalState } from '../types';
+import { exportZenonXml, exportZenonReactionMatrix, zenonTagCategory } from './exportService';
+import type { BaySignal, SignalState, ApparatusType } from '../types';
 
 function sig(overrides: Partial<BaySignal> = {}): BaySignal {
   return {
@@ -68,9 +68,19 @@ describe('exportZenonXml', () => {
     expect(xml).toContain('TypeID="8"');
   });
 
-  it('generates Tagname as "{IED} @{bayName}"', () => {
+  it('generates Tagname as "{bayName} @{category}"', () => {
     const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<Tagname>IED1 @BAY1</Tagname>');
+    expect(xml).toContain('<Tagname>BAY1 @PROTECTION</Tagname>');
+  });
+
+  it('uses group_label as tag category when set', () => {
+    const xml = exportZenonXml([sig({ group_label: 'CIRCUIT BREAKER' })], NO_STATES, 'IEC850', '55E00');
+    expect(xml).toContain('<Tagname>55E00 @CIRCUIT BREAKER</Tagname>');
+  });
+
+  it('falls back to zenonTagCategory when group_label is null', () => {
+    const xml = exportZenonXml([sig({ group_label: null, iec61850_ln: 'XCBR' })], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('<Tagname>BAY1 @CIRCUIT BREAKER</Tagname>');
   });
 
   it('RecourcesLabel uses signal_name', () => {
@@ -123,6 +133,59 @@ describe('exportZenonXml', () => {
   it('falls back to 0 when IED not in netAddrMap', () => {
     const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1', {});
     expect(xml).toContain('<NetAddr>0</NetAddr>');
+  });
+});
+
+describe('zenonTagCategory', () => {
+  const map = (overrides: Partial<BaySignal> = {}) => sig(overrides);
+  const typeMap = (code: string, type: ApparatusType): Record<string, ApparatusType> => ({ [code]: type });
+
+  it('XCBR → CIRCUIT BREAKER', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'XCBR' }))).toBe('CIRCUIT BREAKER');
+  });
+
+  it('XSWI → DISCONNECTOR by default', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'XSWI' }))).toBe('DISCONNECTOR');
+  });
+
+  it('XSWI + Jarðrofi apparatus → EARTHING SWITCH', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'XSWI', equipment_code: 'QC1' }), typeMap('QC1', 'Jarðrofi'))).toBe('EARTHING SWITCH');
+  });
+
+  it('MV CDC → MEASUREMENT', () => {
+    expect(zenonTagCategory(map({ iec61850_cdc: 'MV', iec61850_ln: 'MMXU' }))).toBe('MEASUREMENT');
+  });
+
+  it('CMV CDC → MEASUREMENT', () => {
+    expect(zenonTagCategory(map({ iec61850_cdc: 'CMV', iec61850_ln: 'GGIO' }))).toBe('MEASUREMENT');
+  });
+
+  it('INS CDC → MEASUREMENT', () => {
+    expect(zenonTagCategory(map({ iec61850_cdc: 'INS', iec61850_ln: 'MMTR' }))).toBe('MEASUREMENT');
+  });
+
+  it('MMXU lnClass → MEASUREMENT', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'MMXU', iec61850_cdc: 'SPS' }))).toBe('MEASUREMENT');
+  });
+
+  it('PTOC → PROTECTION', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'PTOC' }))).toBe('PROTECTION');
+  });
+
+  it('LGOS → PROTECTION', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'LGOS' }))).toBe('PROTECTION');
+  });
+
+  it('GGIO with DO=Loc → LOCAL/REMOTE', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'GGIO', iec61850_do: 'Loc' }))).toBe('LOCAL/REMOTE');
+  });
+
+  it('LCCH → NETWORK', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'LCCH' }))).toBe('NETWORK');
+  });
+
+  it('unknown lnClass → PROTECTION (fallback)', () => {
+    expect(zenonTagCategory(map({ iec61850_ln: 'GGIO', iec61850_do: 'Ind' }))).toBe('PROTECTION');
   });
 });
 

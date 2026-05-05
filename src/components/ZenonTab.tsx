@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useApi } from '../context/ApiContext';
 import { useLibrary } from '../context/LibraryContext';
 import { loadZenonConfig, saveZenonConfig } from '../services/zenonConfigService';
@@ -10,10 +10,11 @@ interface Props {
   projectId: string;
   projectName: string;
   ieds: Equipment[];
+  apparatus: Equipment[];
   bays: Bay[];
 }
 
-export function ZenonTab({ projectId, projectName, ieds, bays }: Props) {
+export function ZenonTab({ projectId, projectName, ieds, apparatus, bays }: Props) {
   const { api } = useApi();
   const { signalStates } = useLibrary();
 
@@ -45,8 +46,13 @@ export function ZenonTab({ projectId, projectName, ieds, bays }: Props) {
     }
   };
 
+  const apparatusTypeMap = useMemo(
+    () => Object.fromEntries(apparatus.filter(e => e.type).map(e => [e.code, e.type!])),
+    [apparatus],
+  );
+
   const handleExportVar = () => {
-    exportZenonAllBaysVariables(bays, projectName, signalStates, config.driver_name, config.net_addr);
+    exportZenonAllBaysVariables(bays, projectName, signalStates, config.driver_name, config.net_addr, apparatusTypeMap);
   };
 
   const handleExportRema = () => {
