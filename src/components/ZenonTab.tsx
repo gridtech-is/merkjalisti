@@ -16,7 +16,7 @@ interface Props {
 
 export function ZenonTab({ projectId, projectName, ieds, apparatus, bays }: Props) {
   const { api } = useApi();
-  const { signalStates } = useLibrary();
+  const { signalStates, zenonTagCategories } = useLibrary();
 
   const [config, setConfig] = useState<ZenonConfig>({ driver_name: 'IEC850', net_addr: {} });
   const [sha, setSha] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export function ZenonTab({ projectId, projectName, ieds, apparatus, bays }: Prop
           style={{ display: 'none' }}
           onChange={e => {
             const f = e.target.files?.[0];
-            if (f) exportZenonLanguageCsv(bays, f);
+            if (f) exportZenonLanguageCsv(bays, signalStates, zenonTagCategories, f);
             e.target.value = '';
           }}
         />

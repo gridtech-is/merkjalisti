@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { exportZenonXml, exportZenonReactionMatrix, zenonTagCategory, mergeZenonLanguageCsv } from './exportService';
-import type { BaySignal, SignalState, ApparatusType, Bay } from '../types';
+import type { BaySignal, SignalState, ApparatusType, Bay, ZenonTagCategory } from '../types';
 
 function sig(overrides: Partial<BaySignal> = {}): BaySignal {
   return {
@@ -363,22 +363,28 @@ function bay(signals: Partial<BaySignal>[]): Bay {
 }
 
 const HEADER = 'Keyword\tICELANDIC.TXT\tZENONSTR.TXT';
+const EMPTY_STATES: SignalState[] = [];
+const NO_CATS: ZenonTagCategory[] = [];
+
+function cat(key: string, name_is: string, name_en: string): ZenonTagCategory {
+  return { id: key, key, name_is, name_en };
+}
 
 describe('mergeZenonLanguageCsv', () => {
   it('bætir við nýrri færslu þegar signal_name er ekki til', () => {
-    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], HEADER);
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], EMPTY_STATES, NO_CATS, HEADER);
     expect(result).toContain('CB_READY\tAFLROFI\tCircuit Ready');
   });
 
   it('sleppir lykli sem er þegar til í CSV', () => {
     const existing = `${HEADER}\nCB_READY\tAFLROFI\tCircuit Ready`;
-    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], existing);
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], EMPTY_STATES, NO_CATS, existing);
     const count = (result.match(/CB_READY/g) ?? []).length;
     expect(count).toBe(1);
   });
 
   it('notar signal_name sem fallback þegar name_en er null', () => {
-    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'DS_OPEN', name_is: 'OPINN', name_en: null }])], HEADER);
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'DS_OPEN', name_is: 'OPINN', name_en: null }])], EMPTY_STATES, NO_CATS, HEADER);
     expect(result).toContain('DS_OPEN\tOPINN\tDS_OPEN');
   });
 
@@ -387,14 +393,14 @@ describe('mergeZenonLanguageCsv', () => {
       bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'CB Ready' }]),
       bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'CB Ready' }]),
     ];
-    const result = mergeZenonLanguageCsv(bays, HEADER);
+    const result = mergeZenonLanguageCsv(bays, EMPTY_STATES, NO_CATS, HEADER);
     const count = (result.match(/CB_READY/g) ?? []).length;
     expect(count).toBe(1);
   });
 
   it('varðveitir upprunalegar línur og fyrirsögn', () => {
     const existing = `${HEADER}\nX_OFF\tSLÖKKT\tOFF`;
-    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'NEW_SIG', name_is: 'NÝTT', name_en: 'New' }])], existing);
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'NEW_SIG', name_is: 'NÝTT', name_en: 'New' }])], EMPTY_STATES, NO_CATS, existing);
     expect(result).toContain(HEADER);
     expect(result).toContain('X_OFF\tSLÖKKT\tOFF');
     expect(result).toContain('NEW_SIG\tNÝTT\tNew');
@@ -406,7 +412,7 @@ describe('mergeZenonLanguageCsv', () => {
         { signal_name: 'SIG_A', name_is: 'A', name_en: 'A_EN' },
         { signal_name: 'SIG_B', name_is: 'B', name_en: 'B_EN' },
       ])],
-      HEADER,
+      EMPTY_STATES, NO_CATS, HEADER,
     );
     expect(result).toContain('SIG_A\tA\tA_EN');
     expect(result).toContain('SIG_B\tB\tB_EN');
@@ -415,9 +421,47 @@ describe('mergeZenonLanguageCsv', () => {
   it('algjörlega tóm skrá (0 bæti) → bætir við fyrirsögn og merkjum', () => {
     const result = mergeZenonLanguageCsv(
       [bay([{ signal_name: 'SIG_A', name_is: 'A', name_en: 'A_EN' }])],
-      '',
+      EMPTY_STATES, NO_CATS, '',
     );
     expect(result).toContain('Keyword\tICELANDIC.TXT\tZENONSTR.TXT');
     expect(result).toContain('SIG_A\tA\tA_EN');
+  });
+
+  it('stöðulyklar (X_) bætast við úr SignalState', () => {
+    const st = state({ id: 'InActive', states: {
+      '00': { key: 'X_INACTIVE', is: 'ÓVIRK', en: 'INACTIVE' },
+      '01': { key: 'X_ACTIVE',   is: 'VIRK',  en: 'ACTIVE'   },
+    }});
+    const result = mergeZenonLanguageCsv([], [st], NO_CATS, HEADER);
+    expect(result).toContain('X_INACTIVE\tÓVIRK\tINACTIVE');
+    expect(result).toContain('X_ACTIVE\tVIRK\tACTIVE');
+  });
+
+  it('stöðulykill sem er þegar til er sleppt', () => {
+    const existing = `${HEADER}\nX_ACTIVE\tVIRK\tACTIVE`;
+    const st = state({ states: { '01': { key: 'X_ACTIVE', is: 'VIRK', en: 'ACTIVE' } } });
+    const result = mergeZenonLanguageCsv([], [st], NO_CATS, existing);
+    const count = (result.match(/X_ACTIVE/g) ?? []).length;
+    expect(count).toBe(1);
+  });
+
+  it('stöðulykill með null en → notar key sem fallback', () => {
+    const st = state({ states: { '01': { key: 'X_ON', is: 'KVEIKT', en: null } } });
+    const result = mergeZenonLanguageCsv([], [st], NO_CATS, HEADER);
+    expect(result).toContain('X_ON\tKVEIKT\tX_ON');
+  });
+
+  it('flokkar bætast við úr ZenonTagCategory', () => {
+    const cats = [cat('PROTECTION', 'Vörn', 'Protection'), cat('MEASUREMENT', 'Mæligildi', 'Measurement')];
+    const result = mergeZenonLanguageCsv([], NO_STATES, cats, HEADER);
+    expect(result).toContain('PROTECTION\tVörn\tProtection');
+    expect(result).toContain('MEASUREMENT\tMæligildi\tMeasurement');
+  });
+
+  it('flokkur sem er þegar til er sleppt', () => {
+    const existing = `${HEADER}\nPROTECTION\tVörn\tProtection`;
+    const result = mergeZenonLanguageCsv([], NO_STATES, [cat('PROTECTION', 'Vörn', 'Protection')], existing);
+    const count = (result.match(/PROTECTION/g) ?? []).length;
+    expect(count).toBe(1);
   });
 });

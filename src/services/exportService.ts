@@ -1,6 +1,6 @@
 // src/services/exportService.ts
 import * as XLSX from 'xlsx';
-import type { Bay, BaySignal, Equipment, ApparatusType, EquipmentCategory, SignalState } from '../types';
+import type { Bay, BaySignal, Equipment, ApparatusType, EquipmentCategory, SignalState, ZenonTagCategory } from '../types';
 
 const APPARATUS_TYPES = ['Aflrofi', 'Skilrofi', 'Jarðrofi', 'Spennir', 'Stjórnbúnaður', 'Annað'];
 
@@ -1088,28 +1088,44 @@ function parseLanguageCsvKeywords(csvText: string): Set<string> {
 
 const LANGUAGE_CSV_HEADER = 'Keyword\tICELANDIC.TXT\tZENONSTR.TXT';
 
-export function mergeZenonLanguageCsv(bays: Bay[], csvText: string): string {
+export function mergeZenonLanguageCsv(
+  bays: Bay[],
+  signalStates: SignalState[],
+  zenonTagCategories: ZenonTagCategory[],
+  csvText: string,
+): string {
   const base = csvText.trim() || LANGUAGE_CSV_HEADER;
   const existing = parseLanguageCsvKeywords(base);
   const seen = new Set<string>();
   const newLines: string[] = [];
 
+  function addLine(key: string, is: string, en: string | null) {
+    if (!key || seen.has(key) || existing.has(key)) return;
+    seen.add(key);
+    newLines.push(`${key}\t${is}\t${en ?? key}`);
+  }
+
   for (const bay of bays) {
     for (const sig of bay.signals) {
-      const key = sig.signal_name;
-      if (!key || seen.has(key) || existing.has(key)) continue;
-      seen.add(key);
-      const is = sig.name_is;
-      const en = sig.name_en ?? key;
-      newLines.push(`${key}\t${is}\t${en}`);
+      addLine(sig.signal_name, sig.name_is, sig.name_en);
     }
+  }
+
+  for (const st of signalStates) {
+    for (const entry of Object.values(st.states)) {
+      if (entry?.key) addLine(entry.key, entry.is, entry.en);
+    }
+  }
+
+  for (const c of zenonTagCategories) {
+    addLine(c.key, c.name_is, c.name_en);
   }
 
   if (newLines.length === 0) return base;
   return `${base}\n${newLines.join('\n')}`;
 }
 
-export function exportZenonLanguageCsv(bays: Bay[], file: File): Promise<void> {
+export function exportZenonLanguageCsv(bays: Bay[], signalStates: SignalState[], zenonTagCategories: ZenonTagCategory[], file: File): Promise<void> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = e => {
@@ -1120,7 +1136,7 @@ export function exportZenonLanguageCsv(bays: Bay[], file: File): Promise<void> {
         const text = isUtf16Le
           ? new TextDecoder('utf-16le').decode(buf.slice(2))
           : new TextDecoder('utf-8').decode(buf);
-        const merged = mergeZenonLanguageCsv(bays, text);
+        const merged = mergeZenonLanguageCsv(bays, signalStates, zenonTagCategories, text);
         const blob = new Blob([toUtf16Le(merged)], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
