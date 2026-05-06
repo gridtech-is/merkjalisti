@@ -1099,8 +1099,8 @@ export function mergeZenonLanguageCsv(
   const seen = new Set<string>();
   const newLines: string[] = [];
 
-  function addLine(key: string, is: string, en: string | null) {
-    if (!key || seen.has(key) || existing.has(key)) return;
+  function addLine(key: string, is: string | null | undefined, en: string | null | undefined) {
+    if (!key || !is || seen.has(key) || existing.has(key)) return;
     seen.add(key);
     newLines.push(`${key}\t${is}\t${en ?? key}`);
   }
@@ -1113,7 +1113,7 @@ export function mergeZenonLanguageCsv(
 
   for (const st of signalStates) {
     for (const entry of Object.values(st.states)) {
-      if (entry?.key) addLine(entry.key, entry.is, entry.en);
+      if (entry?.key) addLine(entry.key, entry.is, entry.en ?? null);
     }
   }
 
