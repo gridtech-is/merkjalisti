@@ -1222,8 +1222,8 @@ function FlorkarTab() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  type CatForm = { key: string; name_is: string };
-  const emptyForm = (): CatForm => ({ key: '', name_is: '' });
+  type CatForm = { key: string; name_is: string; name_en: string };
+  const emptyForm = (): CatForm => ({ key: '', name_is: '', name_en: '' });
   const [form, setForm] = useState<CatForm>(emptyForm());
 
   useEffect(() => {
@@ -1238,7 +1238,7 @@ function FlorkarTab() {
 
   const openNew = () => { setForm(emptyForm()); setEditingId(null); setModalOpen(true); };
   const openEdit = (c: ZenonTagCategory) => {
-    setForm({ key: c.key, name_is: c.name_is });
+    setForm({ key: c.key, name_is: c.name_is, name_en: c.name_en ?? '' });
     setEditingId(c.id); setModalOpen(true);
   };
 
@@ -1250,6 +1250,7 @@ function FlorkarTab() {
         id: editingId ?? crypto.randomUUID(),
         key: form.key.trim().toUpperCase(),
         name_is: form.name_is.trim(),
+        name_en: form.name_en.trim(),
       };
       const next = editingId === null ? [...cats, built] : cats.map(c => c.id === editingId ? built : c);
       const newSha = await saveZenonTagCategories(api, next, sha, editingId ? `Uppfæra flokk: ${built.key}` : `Nýr flokkur: ${built.key}`);
@@ -1281,21 +1282,22 @@ function FlorkarTab() {
         <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{cats.length} flokkar</span>
       </div>
 
-      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', maxWidth: '500px' }}>
+      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', maxWidth: '640px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              {['Lykill (key)', 'Heiti (IS)', ''].map(h => <th key={h} style={head}>{h}</th>)}
+              {['Lykill (key)', 'Heiti (IS)', 'Heiti (EN)', ''].map(h => <th key={h} style={head}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {cats.length === 0 && (
-              <tr><td colSpan={3} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engir flokkar skráðir</td></tr>
+              <tr><td colSpan={4} style={{ ...cell, textAlign: 'center', color: 'var(--muted)', padding: 'var(--space-8)' }}>Engir flokkar skráðir</td></tr>
             )}
             {cats.map((c, i) => (
               <tr key={c.id} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
                 <td style={{ ...cell, fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>@{c.key}</td>
                 <td style={cell}>{c.name_is}</td>
+                <td style={{ ...cell, color: c.name_en ? 'var(--text)' : 'var(--muted)' }}>{c.name_en || '—'}</td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                   {deletingId === c.id ? (
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -1330,6 +1332,10 @@ function FlorkarTab() {
               <div>
                 <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Heiti á íslensku</label>
                 <input style={inp} value={form.name_is} onChange={e => setForm(f => ({ ...f, name_is: e.target.value }))} placeholder="Vörn" />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Heiti á ensku</label>
+                <input style={inp} value={form.name_en} onChange={e => setForm(f => ({ ...f, name_en: e.target.value }))} placeholder="Protection" />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>

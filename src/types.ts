@@ -4,8 +4,9 @@
 
 export interface ZenonTagCategory {
   id: string;
-  key: string;      // zenon @key, e.g. "PROTECTION" (= name_en)
+  key: string;      // zenon @key, e.g. "PROTECTION"
   name_is: string;  // Icelandic, e.g. "Vörn"
+  name_en: string;  // English, e.g. "Protection"
 }
 
 // ─── Signal units ──────────────────────────────────────────────────────────
