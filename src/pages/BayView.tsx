@@ -11,9 +11,10 @@ import { TestingPanel } from '../components/TestingPanel';
 import { SignalPickerModal } from '../components/SignalFormModal';
 import { ImportSignalsModal } from '../components/ImportSignalsModal';
 import { generateSignalTemplate } from '../services/signalTemplate';
-import { exportBayToExcel, exportZenonBayVariables, exportZenonBayRematrix } from '../services/exportService';
+import { exportBayToExcel, exportZenonAllBaysVariables, exportZenonAllBaysRematrix } from '../services/exportService';
+import { loadZenonConfig } from '../services/zenonConfigService';
 import { appendChange } from '../services/changelogService';
-import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, IedFcda } from '../types';
+import type { BaySignal, Bay, Equipment, EquipmentTemplate, Project, IedFcda, ZenonConfig } from '../types';
 import { loadIedModel } from '../services/iedModelService';
 import { listEquipmentTemplates } from '../services/equipmentTemplateService';
 import { ApplyTemplateModal } from '../components/ApplyTemplateModal';
@@ -37,6 +38,7 @@ export function BayView() {
   const [reviewSending, setReviewSending] = useState(false);
   const [stationNumber, setStationNumber] = useState<string>('');
   const [undoState, setUndoState] = useState<UndoState<BaySignal[]>>(() => createUndoState([]));
+  const [zenonConfig, setZenonConfig] = useState<ZenonConfig>({ driver_name: 'IEC850', net_addr: {} });
   const [iedModels, setIedModels] = useState<Map<string, IedFcda[]>>(new Map());
   const [signalTemplates, setSignalTemplates] = useState<EquipmentTemplate[]>([]);
   const [applyTemplateIed, setApplyTemplateIed] = useState<Equipment | null>(null);
@@ -58,7 +60,9 @@ export function BayView() {
       loadBay(api, projectId, bayId),
       api.readJson<Equipment[]>(`projects/${projectId}/equipment.json`),
       api.readJson<Project>(`projects/${projectId}/project.json`),
-    ]).then(([f, { data: eq, sha: eqSha }, { data: project }]) => {
+      loadZenonConfig(api, projectId),
+    ]).then(([f, { data: eq, sha: eqSha }, { data: project }, zenonFile]) => {
+      setZenonConfig(zenonFile.data);
       setBayFile(f);
       setUndoState(createUndoState(f.bay.signals));
       setAllEquipment(eq);
@@ -529,8 +533,8 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysVariables([bay], bay.display_id, signalStates, zenonConfig.driver_name, zenonConfig.net_addr)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysRematrix([bay], bay.display_id, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>
@@ -544,8 +548,8 @@ export function BayView() {
             <>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysVariables([bay], bay.display_id, signalStates, zenonConfig.driver_name, zenonConfig.net_addr)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysRematrix([bay], bay.display_id, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={handleReject} disabled={reviewSending} style={{ color: 'var(--danger)' }}>✕ Hafna</Button>
               <Button size="sm" onClick={handleApprove} disabled={reviewSending}>✓ Samþykkja</Button>
             </>
@@ -556,8 +560,8 @@ export function BayView() {
               <Button size="sm" variant="ghost" onClick={handleSortByType}>↕ Raða</Button>
               <Button size="sm" variant="ghost" onClick={handleSaveTemplate} disabled={savingTemplate}>⊕ Sniðmát</Button>
               <Button size="sm" variant="ghost" onClick={() => exportBayToExcel(bay)}>↓ Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayVariables(bay, signalStates)}>↓ zenon var</Button>
-              <Button size="sm" variant="ghost" onClick={() => exportZenonBayRematrix(bay, signalStates)}>↓ zenon rema</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysVariables([bay], bay.display_id, signalStates, zenonConfig.driver_name, zenonConfig.net_addr)}>↓ zenon var</Button>
+              <Button size="sm" variant="ghost" onClick={() => exportZenonAllBaysRematrix([bay], bay.display_id, signalStates)}>↓ zenon rema</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowImport(true)}>↑ Innflutningur</Button>
               <Button size="sm" onClick={() => setShowPicker(true)}>+ Bæta við merki</Button>
               <Button size="sm" onClick={commitChanges} disabled={!isDirty}>Vista núna</Button>

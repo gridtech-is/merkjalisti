@@ -979,27 +979,6 @@ export function exportZenonReactionMatrix(
   return lines.join('\n');
 }
 
-export function exportZenonBayVariables(
-  bay: Bay,
-  signalStates: SignalState[],
-  driverName = 'IEC850',
-  netAddrMap: Record<string, number> = {},
-  apparatusTypeMap: Record<string, ApparatusType> = {},
-): void {
-  downloadXml(
-    `${bay.display_id}-zenon-variables.xml`,
-    exportZenonXml(bay.signals, signalStates, driverName, bay.display_id, netAddrMap, apparatusTypeMap),
-  );
-}
-
-export function exportZenonBayRematrix(bay: Bay, signalStates: SignalState[]): void {
-  downloadXml(`${bay.display_id}-zenon-rematrix.xml`, exportZenonReactionMatrix(bay.signals, signalStates));
-}
-
-export function exportZenonBay(bay: Bay, signalStates: SignalState[], driverName = 'IEC850'): void {
-  exportZenonBayVariables(bay, signalStates, driverName);
-  exportZenonBayRematrix(bay, signalStates);
-}
 
 export function exportZenonAllBaysVariables(
   bays: Bay[],
