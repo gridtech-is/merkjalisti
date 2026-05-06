@@ -6,6 +6,7 @@ const PROJECT_NAV = [
   { tab: 'equipment', label: 'Tæki' },
   { tab: 'station',   label: 'Stöðvarmerki' },
   { tab: 'overview',  label: 'Heildar listi' },
+  { tab: 'zenon',     label: 'Zenon' },
   { tab: 'changelog', label: 'Breytingasaga' },
 ];
 
@@ -13,11 +14,12 @@ export function AppShell() {
   const projectRouteMatch = useMatch('/projects/:projectId/*');
   const projectId = projectRouteMatch?.params.projectId;
   const isBayRoute = !!useMatch('/projects/:projectId/bays/:bayId');
+  const isZenonRoute = !!useMatch('/projects/:projectId/zenon');
   const location = useLocation();
   const { projectName } = useProjectNav();
 
   const searchParams = new URLSearchParams(location.search);
-  const activeTab = isBayRoute ? 'bays' : (searchParams.get('tab') ?? 'bays');
+  const activeTab = isBayRoute ? 'bays' : isZenonRoute ? 'zenon' : (searchParams.get('tab') ?? 'bays');
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -52,6 +54,8 @@ export function AppShell() {
             {PROJECT_NAV.map(({ tab, label }) => {
               const to = tab === 'bays'
                 ? `/projects/${projectId}`
+                : tab === 'zenon'
+                ? `/projects/${projectId}/zenon`
                 : `/projects/${projectId}?tab=${tab}`;
               const isActive = activeTab === tab;
               return (

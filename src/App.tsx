@@ -13,6 +13,7 @@ import { NewBay } from './pages/NewBay';
 import { BayView } from './pages/BayView';
 import { SignalsView } from './pages/SignalsView';
 import { LibraryView } from './pages/LibraryView';
+import { ZenonView } from './pages/ZenonView';
 import { NotFound } from './pages/NotFound';
 import './styles.css';
 
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="projects/:projectId/bays/new" element={<NewBay />} />
             <Route path="projects/:projectId/bays/:bayId" element={<BayView />} />
             <Route path="projects/:projectId/signals" element={<SignalsView />} />
+            <Route path="projects/:projectId/zenon" element={<ZenonView />} />
             <Route path="library" element={<LibraryView />} />
             <Route path="*" element={<NotFound />} />
           </Route>

@@ -43,7 +43,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 
 ---
 
-## Staða núna — 2026-04-27
+## Staða núna — 2026-05-06
 
 ### Klárað og pushað — allt á main
 - **Plan 1–3** ✅ — review workflow, station_signals.json, migration
@@ -86,11 +86,14 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
   - **SPI Reaction Matrix** (TypeID=1): CheckArt=0, ReaWert+ReaWertMaske=1 per stöðu, Status 512/513
   - **DPI Reaction Matrix** (TypeID=2): CheckArt=3, ReaAlarm enum-teljari 0–3, State_0 catch-all Status=640
   - **DPI state röðun:** OPEN('01')→CLOSED('10')→INTERMEDIATE('00')→FAULT('11')
+  - **MX struct** (TypeID 31-38): CDC=MV merki með DO í MX_SLOT_MAP fara sem complex struct
+  - **Language.csv merge** ✅ — `mergeZenonLanguageCsv` + `exportZenonLanguageCsv` — les UTF-16 LE, bætir við signal_name/states/categories
+  - **ZenonView** ✅ — `/projects/:projectId/zenon` — eigin síða í hliðarstiku, "↓ Allt" + einstakir hnappar, IED NetAddr listi
 - **Block eyða** ✅ — `onBatchDelete` prop í SignalTable, "Eyða völdum" hnappur í block edit toolbar
 - **Vista við yfirganga** ✅ — `navigateAway()` í BayView vistar ef dirty áður en farið er milli reita eða yfir á aðrar síður
 - **useAutoCommit unmount-vista** ✅ — hookinn vistar strax við unmount ef dirty, hindrar tvöföldun með `isDirtyRef`
 - **LibraryContext** ✅ — `signal_library` + `signal_states` cached einu sinni, deilt alls staðar via `useLibrary()`
-- **84 testar** ✅, build ✅
+- **132 testar** ✅, build ✅
 
 ### Óklárað / framundan
 - **SaaS/viðskiptavinir spec** ✅ committað — `docs/superpowers/specs/2026-04-23-saas-vidskiptavinir-design.md` — Supabase, RLS, RBAC, IP allowlist, audit log — **framkvæmd ekki hafin**
@@ -102,7 +105,7 @@ Static SPA on GitHub Pages (`/merkjalisti/` base path). All project data lives a
 - IED módel geymt sem `IedFcda[]` í `projects/{id}/ied_models/{equipment.id}.json`
 
 ### Git staða
-- App repo: `main`, allt pushað ✅ (fram að zenon+block eyða+vista við yfirganga — ekki pushað enn)
+- App repo: `main`, allt pushað ✅
 - Data repo: `main`, allt pushað ✅
 
 ### Athugið á nýrri tölvu
