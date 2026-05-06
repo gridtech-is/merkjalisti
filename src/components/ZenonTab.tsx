@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useApi } from '../context/ApiContext';
 import { useLibrary } from '../context/LibraryContext';
 import { loadZenonConfig, saveZenonConfig } from '../services/zenonConfigService';
-import { exportZenonAllBaysVariables, exportZenonAllBaysRematrix } from '../services/exportService';
+import { exportZenonAllBaysVariables, exportZenonAllBaysRematrix, exportZenonLanguageCsv } from '../services/exportService';
 import { Button } from './ui';
 import type { Equipment, Bay, ZenonConfig } from '../types';
 
@@ -58,6 +58,8 @@ export function ZenonTab({ projectId, projectName, ieds, apparatus, bays }: Prop
   const handleExportRema = () => {
     exportZenonAllBaysRematrix(bays, projectName, signalStates);
   };
+
+  const langInputRef = useRef<HTMLInputElement>(null);
 
   const inputStyle: React.CSSProperties = {
     background: 'var(--surface-alt)', border: '1px solid var(--line)',
@@ -127,6 +129,18 @@ export function ZenonTab({ projectId, projectName, ieds, apparatus, bays }: Prop
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <Button onClick={handleExportVar} size="sm">↓ zenon var</Button>
         <Button onClick={handleExportRema} size="sm">↓ zenon rema</Button>
+        <input
+          ref={langInputRef}
+          type="file"
+          accept=".csv"
+          style={{ display: 'none' }}
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) exportZenonLanguageCsv(bays, f);
+            e.target.value = '';
+          }}
+        />
+        <Button onClick={() => langInputRef.current?.click()} size="sm">↓ zenon lang</Button>
         <Button onClick={handleSave} size="sm" disabled={saving}>
           {saving ? 'Vista...' : 'Vista'}
         </Button>

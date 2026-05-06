@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { exportZenonXml, exportZenonReactionMatrix, zenonTagCategory } from './exportService';
-import type { BaySignal, SignalState, ApparatusType } from '../types';
+import { exportZenonXml, exportZenonReactionMatrix, zenonTagCategory, mergeZenonLanguageCsv } from './exportService';
+import type { BaySignal, SignalState, ApparatusType, Bay } from '../types';
 
 function sig(overrides: Partial<BaySignal> = {}): BaySignal {
   return {
@@ -133,6 +133,81 @@ describe('exportZenonXml', () => {
   it('falls back to 0 when IED not in netAddrMap', () => {
     const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1', {});
     expect(xml).toContain('<NetAddr>0</NetAddr>');
+  });
+});
+
+function mxSig(doName: string): BaySignal {
+  return sig({ iec61850_cdc: 'MV', iec61850_do: doName, iec61850_da: 'mag.f', iec61850_fc: 'MX', iec61850_ln: 'MMXU', state_id: null });
+}
+
+describe('exportZenonXml — MX struct', () => {
+  it('Hz → parent (TypeID=38, IsComplex=TRUE) + child (TypeID=32)', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('ShortName="BAY1_MX"');
+    expect(xml).toContain('TypeID="38" HWObjectType="8" HWObjectName="PLC marker" IsComplex="TRUE"');
+    expect(xml).toContain('ShortName="BAY1_MX.Hz"');
+    expect(xml).toContain('TypeID="32"');
+  });
+
+  it('parent has ID_Complex and child references it via ID_ComplexVariable', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    const parentId = xml.match(/<ID_Complex>(\d+)<\/ID_Complex>/)?.[1];
+    expect(parentId).toBeDefined();
+    expect(xml).toContain(`<ID_ComplexVariable>${parentId}</ID_ComplexVariable>`);
+  });
+
+  it('Hz child has BitAddr=32', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toMatch(/ShortName="BAY1_MX\.Hz"[\s\S]*?<BitAddr>32<\/BitAddr>/);
+  });
+
+  it('TotW → TypeID=31, BitAddr=0, slotName=TotW', () => {
+    const xml = exportZenonXml([mxSig('TotW')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('ShortName="BAY1_MX.TotW"');
+    expect(xml).toContain('TypeID="31"');
+    expect(xml).toMatch(/ShortName="BAY1_MX\.TotW"[\s\S]*?<BitAddr>0<\/BitAddr>/);
+  });
+
+  it('PPVPhsAB → PhV[1], TypeID=33, BitAddr=64', () => {
+    const xml = exportZenonXml([mxSig('PPVPhsAB')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('ShortName="BAY1_MX.PhV[1]"');
+    expect(xml).toContain('TypeID="33"');
+  });
+
+  it('APhsA → PhA[1], TypeID=34, BitAddr=160', () => {
+    const xml = exportZenonXml([mxSig('APhsA')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('ShortName="BAY1_MX.PhA[1]"');
+    expect(xml).toContain('TypeID="34"');
+  });
+
+  it('CDC=MV with unknown DO → REAL (TypeID=11), no MX parent', () => {
+    const xml = exportZenonXml([sig({ iec61850_cdc: 'MV', iec61850_do: 'SupWh', iec61850_da: 'actVal', iec61850_fc: 'ST' })], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).not.toContain('TypeID="38"');
+    expect(xml).toContain('TypeID="11"');
+  });
+
+  it('type list includes TypeID=38 and member types used', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('<Type TypeID="38" IsComplex="TRUE">');
+    expect(xml).toContain('<Type TypeID="32" IsComplex="FALSE">');
+  });
+
+  it('type list includes MeasuredValues name in TypeID=38', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('<Name>MeasuredValues</Name>');
+  });
+
+  it('mixed bay: MX signal + BOOL signal → both present', () => {
+    const xml = exportZenonXml([mxSig('Hz'), sig()], NO_STATES, 'IEC850', 'BAY1');
+    expect(xml).toContain('ShortName="BAY1_MX.Hz"');
+    expect(xml).toContain('ShortName="BAY1_Q0_CB_READY"');
+  });
+
+  it('parent has no SymbAddr', () => {
+    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
+    // Parent variable should not have SymbAddr
+    const parentMatch = xml.match(/ShortName="BAY1_MX"[^>]*>[\s\S]*?<\/Variable>/)?.[0] ?? '';
+    expect(parentMatch).not.toContain('<SymbAddr>');
   });
 });
 
@@ -274,5 +349,66 @@ describe('exportZenonReactionMatrix', () => {
   it('uses version 15000', () => {
     const xml = exportZenonReactionMatrix([sig()], [state()]);
     expect(xml).toContain('MainVersion="15000"');
+  });
+});
+
+// ─── mergeZenonLanguageCsv ──────────────────────────────────────────────────
+
+function bay(signals: Partial<BaySignal>[]): Bay {
+  return {
+    id: 'b1', display_id: 'BAY1', bay_name: 'Bay 1', voltage_level: '132',
+    description: null, equipment_ids: [], status: 'DRAFT', review: null,
+    signals: signals.map((s, i) => sig({ id: String(i + 1), ...s })),
+  };
+}
+
+const HEADER = 'Keyword\tICELANDIC.TXT\tZENONSTR.TXT';
+
+describe('mergeZenonLanguageCsv', () => {
+  it('bætir við nýrri færslu þegar signal_name er ekki til', () => {
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], HEADER);
+    expect(result).toContain('CB_READY\tAFLROFI\tCircuit Ready');
+  });
+
+  it('sleppir lykli sem er þegar til í CSV', () => {
+    const existing = `${HEADER}\nCB_READY\tAFLROFI\tCircuit Ready`;
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'Circuit Ready' }])], existing);
+    const count = (result.match(/CB_READY/g) ?? []).length;
+    expect(count).toBe(1);
+  });
+
+  it('notar signal_name sem fallback þegar name_en er null', () => {
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'DS_OPEN', name_is: 'OPINN', name_en: null }])], HEADER);
+    expect(result).toContain('DS_OPEN\tOPINN\tDS_OPEN');
+  });
+
+  it('tvítekning signal_name í mörgum reitum → ein færsla', () => {
+    const bays = [
+      bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'CB Ready' }]),
+      bay([{ signal_name: 'CB_READY', name_is: 'AFLROFI', name_en: 'CB Ready' }]),
+    ];
+    const result = mergeZenonLanguageCsv(bays, HEADER);
+    const count = (result.match(/CB_READY/g) ?? []).length;
+    expect(count).toBe(1);
+  });
+
+  it('varðveitir upprunalegar línur og fyrirsögn', () => {
+    const existing = `${HEADER}\nX_OFF\tSLÖKKT\tOFF`;
+    const result = mergeZenonLanguageCsv([bay([{ signal_name: 'NEW_SIG', name_is: 'NÝTT', name_en: 'New' }])], existing);
+    expect(result).toContain(HEADER);
+    expect(result).toContain('X_OFF\tSLÖKKT\tOFF');
+    expect(result).toContain('NEW_SIG\tNÝTT\tNew');
+  });
+
+  it('tómt CSV (aðeins fyrirsögn) → bætir öllum merkjum við', () => {
+    const result = mergeZenonLanguageCsv(
+      [bay([
+        { signal_name: 'SIG_A', name_is: 'A', name_en: 'A_EN' },
+        { signal_name: 'SIG_B', name_is: 'B', name_en: 'B_EN' },
+      ])],
+      HEADER,
+    );
+    expect(result).toContain('SIG_A\tA\tA_EN');
+    expect(result).toContain('SIG_B\tB\tB_EN');
   });
 });
