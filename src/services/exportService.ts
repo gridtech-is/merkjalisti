@@ -1086,8 +1086,11 @@ function parseLanguageCsvKeywords(csvText: string): Set<string> {
   return keywords;
 }
 
+const LANGUAGE_CSV_HEADER = 'Keyword\tICELANDIC.TXT\tZENONSTR.TXT';
+
 export function mergeZenonLanguageCsv(bays: Bay[], csvText: string): string {
-  const existing = parseLanguageCsvKeywords(csvText);
+  const base = csvText.trim() || LANGUAGE_CSV_HEADER;
+  const existing = parseLanguageCsvKeywords(base);
   const seen = new Set<string>();
   const newLines: string[] = [];
 
@@ -1102,8 +1105,8 @@ export function mergeZenonLanguageCsv(bays: Bay[], csvText: string): string {
     }
   }
 
-  if (newLines.length === 0) return csvText;
-  return `${csvText}\n${newLines.join('\n')}`;
+  if (newLines.length === 0) return base;
+  return `${base}\n${newLines.join('\n')}`;
 }
 
 export function exportZenonLanguageCsv(bays: Bay[], file: File): Promise<void> {
@@ -1112,7 +1115,11 @@ export function exportZenonLanguageCsv(bays: Bay[], file: File): Promise<void> {
     reader.onload = e => {
       try {
         const buf = e.target!.result as ArrayBuffer;
-        const text = new TextDecoder('utf-16le').decode(buf.slice(2));
+        const bytes = new Uint8Array(buf);
+        const isUtf16Le = bytes[0] === 0xFF && bytes[1] === 0xFE;
+        const text = isUtf16Le
+          ? new TextDecoder('utf-16le').decode(buf.slice(2))
+          : new TextDecoder('utf-8').decode(buf);
         const merged = mergeZenonLanguageCsv(bays, text);
         const blob = new Blob([toUtf16Le(merged)], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);

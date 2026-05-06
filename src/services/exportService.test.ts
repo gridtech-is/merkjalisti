@@ -411,4 +411,13 @@ describe('mergeZenonLanguageCsv', () => {
     expect(result).toContain('SIG_A\tA\tA_EN');
     expect(result).toContain('SIG_B\tB\tB_EN');
   });
+
+  it('algjörlega tóm skrá (0 bæti) → bætir við fyrirsögn og merkjum', () => {
+    const result = mergeZenonLanguageCsv(
+      [bay([{ signal_name: 'SIG_A', name_is: 'A', name_en: 'A_EN' }])],
+      '',
+    );
+    expect(result).toContain('Keyword\tICELANDIC.TXT\tZENONSTR.TXT');
+    expect(result).toContain('SIG_A\tA\tA_EN');
+  });
 });
