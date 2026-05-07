@@ -136,78 +136,12 @@ describe('exportZenonXml', () => {
   });
 });
 
-function mxSig(doName: string): BaySignal {
-  return sig({ iec61850_cdc: 'MV', iec61850_do: doName, iec61850_da: 'mag.f', iec61850_fc: 'MX', iec61850_ln: 'MMXU', state_id: null });
-}
-
-describe('exportZenonXml — MX struct', () => {
-  it('Hz → parent (TypeID=38, IsComplex=TRUE) + child (TypeID=32)', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('ShortName="BAY1_MX"');
-    expect(xml).toContain('TypeID="38" HWObjectType="8" HWObjectName="PLC marker" IsComplex="TRUE"');
-    expect(xml).toContain('ShortName="BAY1_MX.Hz"');
-    expect(xml).toContain('TypeID="32"');
-  });
-
-  it('parent has ID_Complex and child references it via ID_ComplexVariable', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    const parentId = xml.match(/<ID_Complex>(\d+)<\/ID_Complex>/)?.[1];
-    expect(parentId).toBeDefined();
-    expect(xml).toContain(`<ID_ComplexVariable>${parentId}</ID_ComplexVariable>`);
-  });
-
-  it('Hz child has BitAddr=32', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toMatch(/ShortName="BAY1_MX\.Hz"[\s\S]*?<BitAddr>32<\/BitAddr>/);
-  });
-
-  it('TotW → TypeID=31, BitAddr=0, slotName=TotW', () => {
-    const xml = exportZenonXml([mxSig('TotW')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('ShortName="BAY1_MX.TotW"');
-    expect(xml).toContain('TypeID="31"');
-    expect(xml).toMatch(/ShortName="BAY1_MX\.TotW"[\s\S]*?<BitAddr>0<\/BitAddr>/);
-  });
-
-  it('PPVPhsAB → PhV[1], TypeID=33, BitAddr=64', () => {
-    const xml = exportZenonXml([mxSig('PPVPhsAB')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('ShortName="BAY1_MX.PhV[1]"');
-    expect(xml).toContain('TypeID="33"');
-  });
-
-  it('APhsA → PhA[1], TypeID=34, BitAddr=160', () => {
-    const xml = exportZenonXml([mxSig('APhsA')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('ShortName="BAY1_MX.PhA[1]"');
-    expect(xml).toContain('TypeID="34"');
-  });
-
-  it('CDC=MV with unknown DO → REAL (TypeID=6), no MX parent', () => {
-    const xml = exportZenonXml([sig({ iec61850_cdc: 'MV', iec61850_do: 'SupWh', iec61850_da: 'actVal', iec61850_fc: 'ST' })], NO_STATES, 'IEC850', 'BAY1');
+describe('exportZenonXml — CDC=MV (no MX struct)', () => {
+  it('CDC=MV → REAL (TypeID=6), no MX parent', () => {
+    const xml = exportZenonXml([sig({ iec61850_cdc: 'MV', iec61850_do: 'Hz', iec61850_da: 'mag.f', iec61850_fc: 'MX' })], NO_STATES, 'IEC850', 'BAY1');
     expect(xml).not.toContain('TypeID="38"');
+    expect(xml).not.toContain('IsComplex="TRUE"');
     expect(xml).toContain('TypeID="6"');
-  });
-
-  it('type list includes TypeID=38 and member types used', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<Type TypeID="38" IsComplex="TRUE">');
-    expect(xml).toContain('<Type TypeID="32" IsComplex="FALSE">');
-  });
-
-  it('type list includes MeasuredValues name in TypeID=38', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<Name>MeasuredValues</Name>');
-  });
-
-  it('mixed bay: MX signal + BOOL signal → both present', () => {
-    const xml = exportZenonXml([mxSig('Hz'), sig()], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('ShortName="BAY1_MX.Hz"');
-    expect(xml).toContain('ShortName="BAY1_Q0_CB_READY"');
-  });
-
-  it('parent has no SymbAddr', () => {
-    const xml = exportZenonXml([mxSig('Hz')], NO_STATES, 'IEC850', 'BAY1');
-    // Parent variable should not have SymbAddr
-    const parentMatch = xml.match(/ShortName="BAY1_MX"[^>]*>[\s\S]*?<\/Variable>/)?.[0] ?? '';
-    expect(parentMatch).not.toContain('<SymbAddr>');
   });
 });
 

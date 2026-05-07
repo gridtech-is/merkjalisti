@@ -247,252 +247,6 @@ const CDC_TYPE_INFO: Record<string, ZenonTypeInfo> = {
   MV: REAL_TYPE, CMV: REAL_TYPE, SAV: REAL_TYPE,
   INS: DINT_TYPE, INC: DINT_TYPE,
 };
-
-// ─── MX struct (measured values) ──────────────────────────────────────────────
-
-interface MxSlot { typeId: number; bitAddr: number; slotName: string; }
-
-const MX_SLOT_MAP: Record<string, MxSlot> = {
-  TotW:     { typeId: 31, bitAddr: 0,   slotName: 'TotW' },
-  Hz:       { typeId: 32, bitAddr: 32,  slotName: 'Hz' },
-  PPVPhsAB: { typeId: 33, bitAddr: 64,  slotName: 'PhV[1]' },
-  PPVPhsBC: { typeId: 33, bitAddr: 96,  slotName: 'PhV[2]' },
-  PPVPhsCA: { typeId: 33, bitAddr: 128, slotName: 'PhV[3]' },
-  APhsA:    { typeId: 34, bitAddr: 160, slotName: 'PhA[1]' },
-  APhsB:    { typeId: 34, bitAddr: 192, slotName: 'PhA[2]' },
-  APhsC:    { typeId: 34, bitAddr: 224, slotName: 'PhA[3]' },
-  TotPF:    { typeId: 35, bitAddr: 256, slotName: 'PowerFactor' },
-  TotVAr:   { typeId: 36, bitAddr: 288, slotName: 'ReactivePower' },
-  TotVA:    { typeId: 37, bitAddr: 320, slotName: 'ApparentPower' },
-};
-
-const MX_TYPE_NAMES: Record<number, string> = {
-  31: 'Power', 32: 'Frequency', 33: 'Voltage',
-  34: 'Current', 35: 'PF', 36: 'TotVar', 37: 'totVA',
-};
-
-function mxParentXml(bayName: string, complexId: number): string {
-  const name = `${bayName}_MX`;
-  const tagname = `${bayName} @MEASUREMENT`;
-  return (
-    `<Variable ShortName="${xmlEscape(name)}" DriverID="4" TypeID="38" ` +
-    `HWObjectType="8" HWObjectName="PLC marker" IsComplex="TRUE" Matrix="">` +
-    `<ID_Complex>${complexId}</ID_Complex>` +
-    `<Name>${xmlEscape(name)}</Name>` +
-    `<Tagname>${xmlEscape(tagname)}</Tagname>` +
-    `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
-    `<AlternateValue>0.0000000000</AlternateValue><RecourcesLabel/>` +
-    `<NetAddr>0</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
-    `<BitAddr>0</BitAddr><Alignment>0</Alignment><StringLength>5</StringLength>` +
-    `<IsOffsetManuell>TRUE</IsOffsetManuell><OfsAccordingType>FALSE</OfsAccordingType>` +
-    `<ID_DriverTyp>8</ID_DriverTyp>` +
-    `<UpdatePriority>0</UpdatePriority><Standby>FALSE</Standby><Digits>0</Digits>` +
-    `<SignalMin>0.0000000000</SignalMin><SignalMax>100000.0000000000</SignalMax>` +
-    `<RangeMin>0.0000000000</RangeMin><RangeMax>100000.0000000000</RangeMax>` +
-    `<UseMacro>FALSE</UseMacro>` +
-    `<HystNeg>0.0000000000</HystNeg><HystPos>0.0000000000</HystPos>` +
-    `<ArchHystValueType>0</ArchHystValueType>` +
-    `<ArchHystNeg>0.0000000000</ArchHystNeg><ArchHystPos>0.0000000000</ArchHystPos>` +
-    `<ArchHystRelativeMinus>0.0000000000</ArchHystRelativeMinus>` +
-    `<ArchHystRelativePlus>0.0000000000</ArchHystRelativePlus>` +
-    `<SwingingDoorAlgorithmToleranceType>0</SwingingDoorAlgorithmToleranceType>` +
-    `<SwingingDoorAlgorithmTolerance>0.0000000000</SwingingDoorAlgorithmTolerance>` +
-    `<SwingingDoorAlgorithmRelativeTolerance>0.0000000000</SwingingDoorAlgorithmRelativeTolerance>` +
-    `<ZeroClamping>0.0000000000</ZeroClamping><TimestampDeviation>0.0000000000</TimestampDeviation>` +
-    `<DDEActive>FALSE</DDEActive><ArraySizeOld>1</ArraySizeOld>` +
-    `<CounterGroup>0</CounterGroup><MaxGradient>0</MaxGradient>` +
-    `<NormalStateActive>FALSE</NormalStateActive><NormalState>FALSE</NormalState>` +
-    `<HDActive>FALSE</HDActive><HDUpdate>1.000000</HDUpdate><HDSize>0</HDSize>` +
-    `<IsKDAActiv>FALSE</IsKDAActiv>` +
-    `<ExternVisible>FALSE</ExternVisible><ExternVisibleFor/>` +
-    `<ReadWrite>TRUE</ReadWrite><InitialValue/><Profilename/><Adressparam/><Vargroup/>` +
-    `<ServiceGridAccessPermission>0</ServiceGridAccessPermission>` +
-    `<IsRemaActiv>FALSE</IsRemaActiv><AlarmQuitPVValue>0</AlarmQuitPVValue>` +
-    `<VarInASM>FALSE</VarInASM><AlarmViaEquipmentModel>FALSE</AlarmViaEquipmentModel>` +
-    `<AreaName>Alarm_Area_Status</AreaName><Passwordlevel>0</Passwordlevel>` +
-    `<eSignatureCommentRequiredForPerform>TRUE</eSignatureCommentRequiredForPerform>` +
-    `<SignatureMode>0</SignatureMode><eSignatureVerificationLevel>0</eSignatureVerificationLevel>` +
-    `<eSignatureCommentRequiredForVerify>TRUE</eSignatureCommentRequiredForVerify>` +
-    `<eSignatureApprobationLevel>0</eSignatureApprobationLevel>` +
-    `<eSignatureCommentRequiredForApprove>TRUE</eSignatureCommentRequiredForApprove>` +
-    `<SignatureEditModus>0</SignatureEditModus>` +
-    `<InOut>TRUE</InOut><SBO>FALSE</SBO><CancelOperate>FALSE</CancelOperate>` +
-    `<ValueMin>0.0000000000</ValueMin><ValueMax>100000.0000000000</ValueMax>` +
-    `<LockingName/><SetValueProtocol>1</SetValueProtocol>` +
-    `<SV_Act>FALSE</SV_Act><SV_VBA>TRUE</SV_VBA>` +
-    `<VisualName/><Meaning/><WaterfallParam/><Use_in_ProcRec>FALSE</Use_in_ProcRec>` +
-    VAR_ISLOCAL +
-    `<IsSWProtokol>1</IsSWProtokol><IsSW_Akt>TRUE</IsSW_Akt><IsSW_VBA>TRUE</IsSW_VBA>` +
-    `</Variable>`
-  );
-}
-
-function mxChildXml(
-  sig: BaySignal,
-  bayName: string,
-  slot: MxSlot,
-  complexId: number,
-  netAddrMap: Record<string, number>,
-): string {
-  const name = `${bayName}_MX.${slot.slotName}`;
-  const symbAddr = buildSymbAddr(sig);
-  const tagname = `${bayName} @MEASUREMENT`;
-  return (
-    `<Variable ShortName="${xmlEscape(name)}" DriverID="4" TypeID="${slot.typeId}" ` +
-    `HWObjectType="8" HWObjectName="PLC marker" IsComplex="FALSE" Matrix="">` +
-    `<ID_ComplexVariable>${complexId}</ID_ComplexVariable>` +
-    `<Name>${xmlEscape(name)}</Name>` +
-    `<Tagname>${xmlEscape(tagname)}</Tagname>` +
-    `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
-    `<AlternateValue>0.0000000000</AlternateValue>` +
-    `<RecourcesLabel>@${xmlEscape(sig.signal_name)}</RecourcesLabel>` +
-    `<NetAddr>${netAddrMap[sig.iec61850_ied ?? ''] ?? 0}</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
-    `<BitAddr>${slot.bitAddr}</BitAddr><Alignment>32</Alignment><StringLength>5</StringLength>` +
-    `<SymbAddr>${xmlEscape(symbAddr)}</SymbAddr>` +
-    `<ID_DriverTyp>8</ID_DriverTyp>` +
-    `<UpdatePriority>0</UpdatePriority><Standby>FALSE</Standby><Digits>0</Digits>` +
-    `<SignalMin>0.0000000000</SignalMin><SignalMax>100000.0000000000</SignalMax>` +
-    `<RangeMin>0.0000000000</RangeMin><RangeMax>100000.0000000000</RangeMax>` +
-    `<UseMacro>FALSE</UseMacro>` +
-    `<HystNeg>0.0000000000</HystNeg><HystPos>0.0000000000</HystPos>` +
-    `<ArchHystValueType>0</ArchHystValueType>` +
-    `<ArchHystNeg>0.0000000000</ArchHystNeg><ArchHystPos>0.0000000000</ArchHystPos>` +
-    `<ArchHystRelativeMinus>0.0000000000</ArchHystRelativeMinus>` +
-    `<ArchHystRelativePlus>0.0000000000</ArchHystRelativePlus>` +
-    `<SwingingDoorAlgorithmToleranceType>0</SwingingDoorAlgorithmToleranceType>` +
-    `<SwingingDoorAlgorithmTolerance>0.0000000000</SwingingDoorAlgorithmTolerance>` +
-    `<SwingingDoorAlgorithmRelativeTolerance>0.0000000000</SwingingDoorAlgorithmRelativeTolerance>` +
-    `<ZeroClamping>0.0000000000</ZeroClamping><TimestampDeviation>0.0000000000</TimestampDeviation>` +
-    `<DDEActive>FALSE</DDEActive><ArraySizeOld>1</ArraySizeOld>` +
-    `<CounterGroup>0</CounterGroup><MaxGradient>0</MaxGradient>` +
-    `<NormalStateActive>FALSE</NormalStateActive><NormalState>FALSE</NormalState>` +
-    `<HDActive>FALSE</HDActive><HDUpdate>1.000000</HDUpdate><HDSize>0</HDSize>` +
-    `<IsKDAActiv>FALSE</IsKDAActiv>` +
-    `<ExternVisible>FALSE</ExternVisible><ExternVisibleFor/>` +
-    `<ReadWrite>TRUE</ReadWrite><InitialValue/><Profilename/><Adressparam/><Vargroup/>` +
-    `<ServiceGridAccessPermission>0</ServiceGridAccessPermission>` +
-    `<IsRemaActiv>FALSE</IsRemaActiv><AlarmQuitPVValue>0</AlarmQuitPVValue>` +
-    `<VarInASM>FALSE</VarInASM><AlarmViaEquipmentModel>FALSE</AlarmViaEquipmentModel>` +
-    `<AreaName>Alarm_Area_Status</AreaName><Passwordlevel>0</Passwordlevel>` +
-    `<eSignatureCommentRequiredForPerform>TRUE</eSignatureCommentRequiredForPerform>` +
-    `<SignatureMode>0</SignatureMode><eSignatureVerificationLevel>0</eSignatureVerificationLevel>` +
-    `<eSignatureCommentRequiredForVerify>TRUE</eSignatureCommentRequiredForVerify>` +
-    `<eSignatureApprobationLevel>0</eSignatureApprobationLevel>` +
-    `<eSignatureCommentRequiredForApprove>TRUE</eSignatureCommentRequiredForApprove>` +
-    `<SignatureEditModus>0</SignatureEditModus>` +
-    `<InOut>TRUE</InOut><SBO>FALSE</SBO><CancelOperate>FALSE</CancelOperate>` +
-    `<ValueMin>0.0000000000</ValueMin><ValueMax>100000.0000000000</ValueMax>` +
-    `<LockingName/><SetValueProtocol>1</SetValueProtocol>` +
-    `<SV_Act>FALSE</SV_Act><SV_VBA>TRUE</SV_VBA>` +
-    `<VisualName/><Meaning/><WaterfallParam/><Use_in_ProcRec>FALSE</Use_in_ProcRec>` +
-    VAR_ISLOCAL +
-    `<IsSWProtokol>1</IsSWProtokol><IsSW_Akt>TRUE</IsSW_Akt><IsSW_VBA>TRUE</IsSW_VBA>` +
-    `</Variable>`
-  );
-}
-
-function mxMemberTypeXml(typeId: number): string {
-  const name = MX_TYPE_NAMES[typeId] ?? `Type${typeId}`;
-  return (
-    `<Type TypeID="${typeId}" IsComplex="FALSE">` +
-    `<Invisible>FALSE</Invisible><Hidden>FALSE</Hidden>` +
-    `<InternalTyp>FALSE</InternalTyp><ComplexTyp>FALSE</ComplexTyp>` +
-    `<Datatyp>5</Datatyp>` +
-    `<Name>${xmlEscape(name)}</Name>` +
-    `<Tagname/><Description/><Unit/><ExternalReference/><SOSourceName/>` +
-    `<AlternateValue>0.0000000000</AlternateValue>` +
-    `<AlternateValueString/><RecourcesLabel/><SystemModelGroup/>` +
-    `<StyleGroup/><ScaleStyle/><CurveStyle/>` +
-    `<IsRemaActiv>FALSE</IsRemaActiv>` +
-    `<AlarmQuitPV/><AlarmViewQuitPV/><AlarmQuitPVValue>0</AlarmQuitPVValue>` +
-    `<VarInASM>FALSE</VarInASM><AlarmViaEquipmentModel>FALSE</AlarmViaEquipmentModel>` +
-    `<AreaName/><AreaName2/><AreaName3/><AreaName4/><Digits>0</Digits>` +
-    `<HystNeg>0.0000000000</HystNeg><HystPos>0.0000000000</HystPos>` +
-    `<ArchHystValueType>0</ArchHystValueType>` +
-    `<ArchHystNeg>0.0000000000</ArchHystNeg><ArchHystPos>0.0000000000</ArchHystPos>` +
-    `<ArchHystRelativeMinus>0.0000000000</ArchHystRelativeMinus>` +
-    `<ArchHystRelativePlus>0.0000000000</ArchHystRelativePlus>` +
-    `<SwingingDoorAlgorithmToleranceType>0</SwingingDoorAlgorithmToleranceType>` +
-    `<SwingingDoorAlgorithmTolerance>0.0000000000</SwingingDoorAlgorithmTolerance>` +
-    `<SwingingDoorAlgorithmRelativeTolerance>0.0000000000</SwingingDoorAlgorithmRelativeTolerance>` +
-    `<ZeroClamping>0.0000000000</ZeroClamping><TimestampDeviation>0.0000000000</TimestampDeviation>` +
-    `<SignalMin>0.0000000000</SignalMin><SignalMax>100000.0000000000</SignalMax>` +
-    `<RangeMin>0.0000000000</RangeMin><RangeMax>100000.0000000000</RangeMax>` +
-    `<UseMacro>FALSE</UseMacro><AdjustHardware/><AdjustZenon/>` +
-    `<DDEActive>FALSE</DDEActive><ArraySizeOld>1</ArraySizeOld>` +
-    `<CounterGroup>0</CounterGroup><MaxGradient>0</MaxGradient>` +
-    `<NormalStateActive>FALSE</NormalStateActive><NormalState>FALSE</NormalState>` +
-    `<AlarmPV0/><AlarmPV1/><AlarmPV2/>` +
-    `<HDActive>FALSE</HDActive><HDUpdate>1.000000</HDUpdate><HDSize>0</HDSize>` +
-    `<IsKDAActiv>FALSE</IsKDAActiv><Passwordlevel>0</Passwordlevel>` +
-    `<eSignatureCommentRequiredForPerform>TRUE</eSignatureCommentRequiredForPerform>` +
-    `<SignatureMode>0</SignatureMode><eSignatureVerificationLevel>0</eSignatureVerificationLevel>` +
-    `<eSignatureCommentRequiredForVerify>TRUE</eSignatureCommentRequiredForVerify>` +
-    `<eSignatureApprobationLevel>0</eSignatureApprobationLevel>` +
-    `<eSignatureCommentRequiredForApprove>TRUE</eSignatureCommentRequiredForApprove>` +
-    `<SignatureText/><SignatureEditModus>0</SignatureEditModus>` +
-    `<InOut>TRUE</InOut><SBO>FALSE</SBO><CancelOperate>FALSE</CancelOperate>` +
-    `<ValueMin>0.0000000000</ValueMin><ValueMax>100000.0000000000</ValueMax>` +
-    `<LockingName/><SetValueProtocol>1</SetValueProtocol>` +
-    `<SV_Act>FALSE</SV_Act><SV_VBA>TRUE</SV_VBA>` +
-    `<MaxStringLen>5</MaxStringLen><UpdatePriority>0</UpdatePriority><Standby>FALSE</Standby>` +
-    `<Used_in_ProcRec>FALSE</Used_in_ProcRec>` +
-    `</Type>`
-  );
-}
-
-function mxComplexTypeXml(): string {
-  const memberTypeIds = [...new Set(Object.values(MX_SLOT_MAP).map(s => s.typeId))].sort((a, b) => a - b);
-  const items = memberTypeIds.map((tid, i) => `<Items_${i} TypeID="${tid}"/>`).join('');
-  return (
-    `<Type TypeID="38" IsComplex="TRUE">` +
-    items +
-    `<Invisible>FALSE</Invisible><Hidden>FALSE</Hidden>` +
-    `<InternalTyp>FALSE</InternalTyp><ComplexTyp>TRUE</ComplexTyp>` +
-    `<Datatyp>0</Datatyp>` +
-    `<Name>MeasuredValues</Name>` +
-    `<Tagname/><Description/><Unit/><ExternalReference/><SOSourceName/>` +
-    `<AlternateValue>0.0000000000</AlternateValue>` +
-    `<AlternateValueString/><RecourcesLabel/><SystemModelGroup/>` +
-    `<StyleGroup/><ScaleStyle/><CurveStyle/>` +
-    `<IsRemaActiv>FALSE</IsRemaActiv>` +
-    `<AlarmQuitPV/><AlarmViewQuitPV/><AlarmQuitPVValue>0</AlarmQuitPVValue>` +
-    `<VarInASM>FALSE</VarInASM><AlarmViaEquipmentModel>FALSE</AlarmViaEquipmentModel>` +
-    `<AreaName/><AreaName2/><AreaName3/><AreaName4/><Digits>0</Digits>` +
-    `<HystNeg>0.0000000000</HystNeg><HystPos>0.0000000000</HystPos>` +
-    `<ArchHystValueType>0</ArchHystValueType>` +
-    `<ArchHystNeg>0.0000000000</ArchHystNeg><ArchHystPos>0.0000000000</ArchHystPos>` +
-    `<ArchHystRelativeMinus>0.0000000000</ArchHystRelativeMinus>` +
-    `<ArchHystRelativePlus>0.0000000000</ArchHystRelativePlus>` +
-    `<SwingingDoorAlgorithmToleranceType>0</SwingingDoorAlgorithmToleranceType>` +
-    `<SwingingDoorAlgorithmTolerance>0.0000000000</SwingingDoorAlgorithmTolerance>` +
-    `<SwingingDoorAlgorithmRelativeTolerance>0.0000000000</SwingingDoorAlgorithmRelativeTolerance>` +
-    `<ZeroClamping>0.0000000000</ZeroClamping><TimestampDeviation>0.0000000000</TimestampDeviation>` +
-    `<SignalMin>0.0000000000</SignalMin><SignalMax>100000.0000000000</SignalMax>` +
-    `<RangeMin>0.0000000000</RangeMin><RangeMax>100000.0000000000</RangeMax>` +
-    `<UseMacro>FALSE</UseMacro><AdjustHardware/><AdjustZenon/>` +
-    `<DDEActive>FALSE</DDEActive><ArraySizeOld>1</ArraySizeOld>` +
-    `<CounterGroup>0</CounterGroup><MaxGradient>0</MaxGradient>` +
-    `<NormalStateActive>FALSE</NormalStateActive><NormalState>FALSE</NormalState>` +
-    `<AlarmPV0/><AlarmPV1/><AlarmPV2/>` +
-    `<HDActive>FALSE</HDActive><HDUpdate>1.000000</HDUpdate><HDSize>0</HDSize>` +
-    `<IsKDAActiv>FALSE</IsKDAActiv><Passwordlevel>0</Passwordlevel>` +
-    `<eSignatureCommentRequiredForPerform>TRUE</eSignatureCommentRequiredForPerform>` +
-    `<SignatureMode>0</SignatureMode><eSignatureVerificationLevel>0</eSignatureVerificationLevel>` +
-    `<eSignatureCommentRequiredForVerify>TRUE</eSignatureCommentRequiredForVerify>` +
-    `<eSignatureApprobationLevel>0</eSignatureApprobationLevel>` +
-    `<eSignatureCommentRequiredForApprove>TRUE</eSignatureCommentRequiredForApprove>` +
-    `<SignatureText/><SignatureEditModus>0</SignatureEditModus>` +
-    `<InOut>TRUE</InOut><SBO>FALSE</SBO><CancelOperate>FALSE</CancelOperate>` +
-    `<ValueMin>0.0000000000</ValueMin><ValueMax>100000.0000000000</ValueMax>` +
-    `<LockingName/><SetValueProtocol>1</SetValueProtocol>` +
-    `<SV_Act>FALSE</SV_Act><SV_VBA>TRUE</SV_VBA>` +
-    `<MaxStringLen>5</MaxStringLen><UpdatePriority>0</UpdatePriority><Standby>FALSE</Standby>` +
-    `<Used_in_ProcRec>FALSE</Used_in_ProcRec>` +
-    `</Type>`
-  );
-}
-
 const LIMITS_FLAGS =
   '<FlagActiv>TRUE</FlagActiv><FlagAlarm>TRUE</FlagAlarm><FlagDelay>TRUE</FlagDelay>' +
   '<FlagAColor>TRUE</FlagAColor><FlagGroup>TRUE</FlagGroup><FlagClassID>TRUE</FlagClassID>' +
@@ -812,33 +566,16 @@ export function exportZenonXml(
   );
 
   const usedTypeIds = new Set<number>();
-  const mxTypeIds = new Set<number>();
   const varXmls: string[] = [];
-  let hasMxParent = false;
-  const MX_COMPLEX_ID = 3000;
 
   for (const sig of eligible) {
     const cdc = sig.iec61850_cdc ?? '';
-    const slot = MX_SLOT_MAP[sig.iec61850_do ?? ''];
-    if (cdc === 'MV' && slot) {
-      if (!hasMxParent) {
-        varXmls.push(mxParentXml(bayName, MX_COMPLEX_ID));
-        hasMxParent = true;
-      }
-      varXmls.push(mxChildXml(sig, bayName, slot, MX_COMPLEX_ID, netAddrMap));
-      mxTypeIds.add(slot.typeId);
-    } else {
-      const typeInfo = CDC_TYPE_INFO[cdc] ?? BOOL_TYPE;
-      usedTypeIds.add(typeInfo.typeId);
-      varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap, apparatusTypeMap));
-    }
+    const typeInfo = CDC_TYPE_INFO[cdc] ?? BOOL_TYPE;
+    usedTypeIds.add(typeInfo.typeId);
+    varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap, apparatusTypeMap));
   }
 
-  const typeXmls: string[] = [
-    ...ALL_ZENON_TYPES.filter(t => usedTypeIds.has(t.typeId)).map(t => typeXml(t)),
-    ...[...mxTypeIds].sort().map(tid => mxMemberTypeXml(tid)),
-    ...(mxTypeIds.size > 0 ? [mxComplexTypeXml()] : []),
-  ];
+  const typeXmls = ALL_ZENON_TYPES.filter(t => usedTypeIds.has(t.typeId)).map(t => typeXml(t));
 
   return [
     '<?xml version="1.0" encoding="utf-16"?>',
@@ -990,38 +727,20 @@ export function exportZenonAllBaysVariables(
 ): void {
   const allVarXmls: string[] = [];
   const allUsedTypeIds = new Set<number>();
-  const allMxTypeIds = new Set<number>();
 
-  bays.forEach((bay, bayIdx) => {
+  bays.forEach(bay => {
     const eligible = bay.signals.filter(
       s => s.iec61850_ied && s.iec61850_ld && s.iec61850_ln && s.iec61850_do,
     );
-    let hasMxParent = false;
-    const complexId = 3000 + bayIdx;
-
     for (const sig of eligible) {
       const cdc = sig.iec61850_cdc ?? '';
-      const slot = MX_SLOT_MAP[sig.iec61850_do ?? ''];
-      if (cdc === 'MV' && slot) {
-        if (!hasMxParent) {
-          allVarXmls.push(mxParentXml(bay.display_id, complexId));
-          hasMxParent = true;
-        }
-        allVarXmls.push(mxChildXml(sig, bay.display_id, slot, complexId, netAddrMap));
-        allMxTypeIds.add(slot.typeId);
-      } else {
-        const typeInfo = CDC_TYPE_INFO[cdc] ?? BOOL_TYPE;
-        allUsedTypeIds.add(typeInfo.typeId);
-        allVarXmls.push(variableXml(sig, typeInfo, bay.display_id, netAddrMap, apparatusTypeMap));
-      }
+      const typeInfo = CDC_TYPE_INFO[cdc] ?? BOOL_TYPE;
+      allUsedTypeIds.add(typeInfo.typeId);
+      allVarXmls.push(variableXml(sig, typeInfo, bay.display_id, netAddrMap, apparatusTypeMap));
     }
   });
 
-  const typeXmls: string[] = [
-    ...ALL_ZENON_TYPES.filter(t => allUsedTypeIds.has(t.typeId)).map(t => typeXml(t)),
-    ...[...allMxTypeIds].sort().map(tid => mxMemberTypeXml(tid)),
-    ...(allMxTypeIds.size > 0 ? [mxComplexTypeXml()] : []),
-  ];
+  const typeXmls = ALL_ZENON_TYPES.filter(t => allUsedTypeIds.has(t.typeId)).map(t => typeXml(t));
 
   const xml = [
     '<?xml version="1.0" encoding="utf-16"?>',
