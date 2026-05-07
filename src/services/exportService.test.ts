@@ -43,14 +43,16 @@ describe('exportZenonXml', () => {
     expect(xml).toContain('TypeID="8"');
   });
 
-  it('excludes signal missing iec61850_ied', () => {
+  it('excludes signal missing iec61850_ied (only bay name variable present)', () => {
     const xml = exportZenonXml([sig({ iec61850_ied: null })], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).not.toContain('<Variable ');
+    expect(xml).toContain('ShortName="BAY1_Name"');
+    expect(xml).not.toContain('<SymbAddr>Server_');
   });
 
-  it('excludes signal missing iec61850_do', () => {
+  it('excludes signal missing iec61850_do (only bay name variable present)', () => {
     const xml = exportZenonXml([sig({ iec61850_do: null })], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).not.toContain('<Variable ');
+    expect(xml).toContain('ShortName="BAY1_Name"');
+    expect(xml).not.toContain('<SymbAddr>Server_');
   });
 
   it('maps CDC DPS to UDINT (TypeID=5)', () => {

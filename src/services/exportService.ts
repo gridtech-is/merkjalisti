@@ -241,6 +241,13 @@ const DINT_TYPE: ZenonTypeInfo = {
   valueMin: '0.0000000000', valueMax: '2147483647.0000000000',
 };
 
+const STRING_TYPE: ZenonTypeInfo = {
+  typeId: 10, datatyp: 12, name: 'STRING',
+  signalMin: '0.0000000000', signalMax: '0.0000000000',
+  rangeMin: '0.0000000000', rangeMax: '0.0000000000',
+  valueMin: '0.0000000000', valueMax: '0.0000000000',
+};
+
 const CDC_TYPE_INFO: Record<string, ZenonTypeInfo> = {
   SPS: BOOL_TYPE, ACT: BOOL_TYPE, ACD: BOOL_TYPE, SPC: BOOL_TYPE, DPC: BOOL_TYPE,
   DPS: UDINT_TYPE,
@@ -551,6 +558,63 @@ function downloadXml(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
+function bayNameVariableXml(bayName: string): string {
+  const name = `${bayName}_Name`;
+  const tagname = `-- ${bayName} --`;
+  return (
+    `<Variable ShortName="${xmlEscape(name)}" DriverID="1" TypeID="10" ` +
+    `HWObjectType="33" HWObjectName="Internal variable" IsComplex="FALSE" Matrix="">` +
+    `<ID_ComplexVariable>0</ID_ComplexVariable>` +
+    `<Name>${xmlEscape(name)}</Name>` +
+    `<Tagname>${xmlEscape(tagname)}</Tagname>` +
+    `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
+    `<AlternateValue>0.0000000000</AlternateValue>` +
+    `<NetAddr>0</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
+    `<BitAddr>0</BitAddr><Alignment>0</Alignment><StringLength>5</StringLength>` +
+    `<SymbAddr/>` +
+    `<ID_DriverTyp>33</ID_DriverTyp>` +
+    `<UpdatePriority>0</UpdatePriority><Standby>FALSE</Standby><Digits>0</Digits>` +
+    `<SignalMin>0.0000000000</SignalMin><SignalMax>0.0000000000</SignalMax>` +
+    `<RangeMin>0.0000000000</RangeMin><RangeMax>0.0000000000</RangeMax>` +
+    `<UseMacro>FALSE</UseMacro>` +
+    `<HystNeg>0.0000000000</HystNeg><HystPos>0.0000000000</HystPos>` +
+    `<ArchHystValueType>0</ArchHystValueType>` +
+    `<ArchHystNeg>0.0000000000</ArchHystNeg><ArchHystPos>0.0000000000</ArchHystPos>` +
+    `<ArchHystRelativeMinus>0.0000000000</ArchHystRelativeMinus>` +
+    `<ArchHystRelativePlus>0.0000000000</ArchHystRelativePlus>` +
+    `<SwingingDoorAlgorithmToleranceType>0</SwingingDoorAlgorithmToleranceType>` +
+    `<SwingingDoorAlgorithmTolerance>0.0000000000</SwingingDoorAlgorithmTolerance>` +
+    `<SwingingDoorAlgorithmRelativeTolerance>0.0000000000</SwingingDoorAlgorithmRelativeTolerance>` +
+    `<ZeroClamping>0.0000000000</ZeroClamping><TimestampDeviation>0.0000000000</TimestampDeviation>` +
+    `<DDEActive>FALSE</DDEActive><ArraySizeOld>1</ArraySizeOld>` +
+    `<CounterGroup>0</CounterGroup><MaxGradient>0</MaxGradient>` +
+    `<NormalStateActive>FALSE</NormalStateActive><NormalState>FALSE</NormalState>` +
+    `<HDActive>FALSE</HDActive><HDUpdate>1.000000</HDUpdate><HDSize>0</HDSize>` +
+    `<IsKDAActiv>FALSE</IsKDAActiv>` +
+    `<ExternVisible>FALSE</ExternVisible><ExternVisibleFor/>` +
+    `<ReadWrite>TRUE</ReadWrite><InitialValue/><Profilename/><Adressparam/><Vargroup/>` +
+    `<ServiceGridAccessPermission>0</ServiceGridAccessPermission>` +
+    `<IsRemaActiv>FALSE</IsRemaActiv><AlarmQuitPVValue>0</AlarmQuitPVValue>` +
+    `<VarInASM>FALSE</VarInASM><AlarmViaEquipmentModel>FALSE</AlarmViaEquipmentModel>` +
+    `<AreaName>Alarm_Area_Status</AreaName><Passwordlevel>0</Passwordlevel>` +
+    `<eSignatureCommentRequiredForPerform>TRUE</eSignatureCommentRequiredForPerform>` +
+    `<SignatureMode>0</SignatureMode><eSignatureVerificationLevel>0</eSignatureVerificationLevel>` +
+    `<eSignatureCommentRequiredForVerify>TRUE</eSignatureCommentRequiredForVerify>` +
+    `<eSignatureApprobationLevel>0</eSignatureApprobationLevel>` +
+    `<eSignatureCommentRequiredForApprove>TRUE</eSignatureCommentRequiredForApprove>` +
+    `<SignatureEditModus>0</SignatureEditModus>` +
+    `<InOut>TRUE</InOut><SBO>FALSE</SBO><CancelOperate>FALSE</CancelOperate>` +
+    `<ValueMin>0.0000000000</ValueMin><ValueMax>0.0000000000</ValueMax>` +
+    `<LockingName/><SetValueProtocol>1</SetValueProtocol>` +
+    `<SV_Act>FALSE</SV_Act><SV_VBA>TRUE</SV_VBA>` +
+    `<VisualName/><Meaning/><WaterfallParam/><Use_in_ProcRec>FALSE</Use_in_ProcRec>` +
+    VAR_ISLOCAL +
+    `<IsSWProtokol>1</IsSWProtokol><IsSW_Akt>TRUE</IsSW_Akt><IsSW_VBA>TRUE</IsSW_VBA>` +
+    `<Local>TRUE</Local><Remanenz>0</Remanenz><Initial_value/>` +
+    `</Variable>`
+  );
+}
+
 const ALL_ZENON_TYPES = [BOOL_TYPE, UDINT_TYPE, REAL_TYPE, DINT_TYPE];
 
 export function exportZenonXml(
@@ -566,7 +630,7 @@ export function exportZenonXml(
   );
 
   const usedTypeIds = new Set<number>();
-  const varXmls: string[] = [];
+  const varXmls: string[] = [bayNameVariableXml(bayName)];
 
   for (const sig of eligible) {
     const cdc = sig.iec61850_cdc ?? '';
@@ -575,7 +639,10 @@ export function exportZenonXml(
     varXmls.push(variableXml(sig, typeInfo, bayName, netAddrMap, apparatusTypeMap));
   }
 
-  const typeXmls = ALL_ZENON_TYPES.filter(t => usedTypeIds.has(t.typeId)).map(t => typeXml(t));
+  const typeXmls = [
+    typeXml(STRING_TYPE),
+    ...ALL_ZENON_TYPES.filter(t => usedTypeIds.has(t.typeId)).map(t => typeXml(t)),
+  ];
 
   return [
     '<?xml version="1.0" encoding="utf-16"?>',
@@ -584,6 +651,7 @@ export function exportZenonXml(
     ...varXmls,
     '</Apartment>',
     '<Apartment ShortName="zenOn(R) driver list" Version="15000">',
+    '<Driver DriverID="1"><Name>Driver for internal variables</Name><Modul>Intern</Modul></Driver>',
     `<Driver DriverID="4"><Name>IEC 61850 driver</Name><Modul>${xmlEscape(driverName)}</Modul></Driver>`,
     '</Apartment>',
     '<Apartment ShortName="zenOn(R) type list" Version="15000">',
@@ -729,6 +797,7 @@ export function exportZenonAllBaysVariables(
   const allUsedTypeIds = new Set<number>();
 
   bays.forEach(bay => {
+    allVarXmls.push(bayNameVariableXml(bay.display_id));
     const eligible = bay.signals.filter(
       s => s.iec61850_ied && s.iec61850_ld && s.iec61850_ln && s.iec61850_do,
     );
@@ -740,7 +809,10 @@ export function exportZenonAllBaysVariables(
     }
   });
 
-  const typeXmls = ALL_ZENON_TYPES.filter(t => allUsedTypeIds.has(t.typeId)).map(t => typeXml(t));
+  const typeXmls = [
+    typeXml(STRING_TYPE),
+    ...ALL_ZENON_TYPES.filter(t => allUsedTypeIds.has(t.typeId)).map(t => typeXml(t)),
+  ];
 
   const xml = [
     '<?xml version="1.0" encoding="utf-16"?>',
@@ -749,6 +821,7 @@ export function exportZenonAllBaysVariables(
     ...allVarXmls,
     '</Apartment>',
     '<Apartment ShortName="zenOn(R) driver list" Version="15000">',
+    '<Driver DriverID="1"><Name>Driver for internal variables</Name><Modul>Intern</Modul></Driver>',
     `<Driver DriverID="4"><Name>IEC 61850 driver</Name><Modul>${xmlEscape(driverName)}</Modul></Driver>`,
     '</Apartment>',
     '<Apartment ShortName="zenOn(R) type list" Version="15000">',
