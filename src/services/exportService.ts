@@ -229,13 +229,13 @@ const UDINT_TYPE: ZenonTypeInfo = {
   valueMin: '0.0000000000', valueMax: '4294967295.0000000000',
 };
 const REAL_TYPE: ZenonTypeInfo = {
-  typeId: 11, datatyp: 11, name: 'REAL',
+  typeId: 6, datatyp: 5, name: 'REAL',
   signalMin: '0.0000000000', signalMax: '100000.0000000000',
   rangeMin: '0.0000000000', rangeMax: '100000.0000000000',
   valueMin: '0.0000000000', valueMax: '100000.0000000000',
 };
 const DINT_TYPE: ZenonTypeInfo = {
-  typeId: 9, datatyp: 9, name: 'DINT',
+  typeId: 4, datatyp: 3, name: 'DINT',
   signalMin: '0.0000000000', signalMax: '2147483647.0000000000',
   rangeMin: '0.0000000000', rangeMax: '2147483647.0000000000',
   valueMin: '0.0000000000', valueMax: '2147483647.0000000000',

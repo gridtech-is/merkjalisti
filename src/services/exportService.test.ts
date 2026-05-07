@@ -58,9 +58,9 @@ describe('exportZenonXml', () => {
     expect(xml).toContain('TypeID="5"');
   });
 
-  it('maps CDC MV to REAL (TypeID=11)', () => {
+  it('maps CDC MV to REAL (TypeID=6)', () => {
     const xml = exportZenonXml([sig({ iec61850_cdc: 'MV' })], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('TypeID="11"');
+    expect(xml).toContain('TypeID="6"');
   });
 
   it('defaults unknown CDC to BOOL (TypeID=8)', () => {
@@ -180,10 +180,10 @@ describe('exportZenonXml — MX struct', () => {
     expect(xml).toContain('TypeID="34"');
   });
 
-  it('CDC=MV with unknown DO → REAL (TypeID=11), no MX parent', () => {
+  it('CDC=MV with unknown DO → REAL (TypeID=6), no MX parent', () => {
     const xml = exportZenonXml([sig({ iec61850_cdc: 'MV', iec61850_do: 'SupWh', iec61850_da: 'actVal', iec61850_fc: 'ST' })], NO_STATES, 'IEC850', 'BAY1');
     expect(xml).not.toContain('TypeID="38"');
-    expect(xml).toContain('TypeID="11"');
+    expect(xml).toContain('TypeID="6"');
   });
 
   it('type list includes TypeID=38 and member types used', () => {
