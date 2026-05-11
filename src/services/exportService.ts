@@ -429,7 +429,7 @@ function variableXml(
     `<Tagname>${xmlEscape(tagname)}</Tagname>` +
     `<ExternalReference/><Description/><SOSourceName/><SystemModelGroup/>` +
     `<AlternateValue>0.0000000000</AlternateValue>` +
-    `<RecourcesLabel>@${xmlEscape(sig.signal_name)}</RecourcesLabel>` +
+    `<Recourceslabel>@${xmlEscape(sig.signal_name)}</Recourceslabel>` +
     `<NetAddr>${netAddrMap[sig.iec61850_ied ?? ''] ?? 0}</NetAddr><DataBlock>0</DataBlock><Offset>0</Offset>` +
     `<BitAddr>0</BitAddr><Alignment>0</Alignment><StringLength>5</StringLength>` +
     `<SymbAddr>${xmlEscape(symbAddr)}</SymbAddr>` +
@@ -494,7 +494,7 @@ function typeXml(typeInfo: ZenonTypeInfo): string {
     `<Tagname/><Description>Einfacher Datentyp</Description>` +
     `<Unit/><ExternalReference/><SOSourceName/>` +
     `<AlternateValue>0.0000000000</AlternateValue>` +
-    `<AlternateValueString/><RecourcesLabel/><SystemModelGroup/>` +
+    `<AlternateValueString/><Recourceslabel/><SystemModelGroup/>` +
     `<StyleGroup/><ScaleStyle/><CurveStyle/>` +
     `<IsRemaActiv>FALSE</IsRemaActiv>` +
     `<AlarmQuitPV/><AlarmViewQuitPV/><AlarmQuitPVValue>0</AlarmQuitPVValue>` +

@@ -85,9 +85,9 @@ describe('exportZenonXml', () => {
     expect(xml).toContain('<Tagname>BAY1 @CIRCUIT BREAKER</Tagname>');
   });
 
-  it('RecourcesLabel uses signal_name', () => {
+  it('Recourceslabel uses signal_name', () => {
     const xml = exportZenonXml([sig()], NO_STATES, 'IEC850', 'BAY1');
-    expect(xml).toContain('<RecourcesLabel>@CB_READY</RecourcesLabel>');
+    expect(xml).toContain('<Recourceslabel>@CB_READY</Recourceslabel>');
   });
 
   it('sanitizes variable name: dots become underscores', () => {
