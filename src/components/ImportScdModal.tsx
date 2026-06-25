@@ -1,33 +1,36 @@
 // src/components/ImportScdModal.tsx
 // Import an IEC 61850 SCD file. Offers two actions:
-//   1. Add IEDs to project equipment list
+//   1. Import IEDs (builds model, matches Tech key) — new/update
 //   2. Generate an Excel template pre-filled with IEC 61850 references
 
 import { useRef, useState } from 'react';
 import { Modal, Button } from './ui';
 import { parseScd, scdStats, type ScdIed } from '../services/scdParser';
 import { generateTemplateFromScd } from '../services/signalTemplate';
-import type { Equipment } from '../types';
+import { flattenIedModelWithDataSets } from '../services/iedModelService';
+import type { Equipment, IedFcda } from '../types';
 
-function uuid(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
+export interface ScdImportEntry {
+  ied: ScdIed;
+  model: IedFcda[];
+  existingId: string | null;   // equipment.id ef Tech key passar, annars null
 }
 
 interface Props {
-  onAddEquipment: (items: Equipment[]) => void;
+  existingIeds: Equipment[];
+  onImport: (entries: ScdImportEntry[]) => Promise<void>;
   onClose: () => void;
 }
 
-export function ImportScdModal({ onAddEquipment, onClose }: Props) {
+export function ImportScdModal({ existingIeds, onImport, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [ieds, setIeds] = useState<ScdIed[]>([]);
   const [fileName, setFileName] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [xmlText, setXmlText] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const handleFile = (file: File) => {
     setErrors([]);
@@ -36,6 +39,7 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
+      setXmlText(text);
       const result = parseScd(text);
       setIeds(result.ieds);
       setErrors(result.errors);
@@ -71,20 +75,23 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
   const selectedIeds = ieds.filter(i => selected.has(i.name));
   const stats = scdStats(selectedIeds);
 
-  const handleAddEquipment = () => {
-    const items: Equipment[] = selectedIeds.map(ied => ({
-      id: uuid(),
-      category: 'ied' as const,
-      code: ied.name,              // IED name used as tech key by default
-      type: null,
-      ied_name: ied.name,
-      manufacturer: ied.manufacturer || null,
-      model: ied.model || null,
-      config_version: ied.configVersion || null,
-      template_id: null,
-      description: ied.desc || '',
-    }));
-    onAddEquipment(items);
+  const matchExistingId = (iedName: string): string | null =>
+    existingIeds.find(e => e.code === iedName)?.id ?? null;
+  const selectedNew = selectedIeds.filter(i => matchExistingId(i.name) === null).length;
+  const selectedUpd = selectedIeds.length - selectedNew;
+
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      const entries: ScdImportEntry[] = selectedIeds.map(ied => ({
+        ied,
+        model: flattenIedModelWithDataSets(ied, xmlText),
+        existingId: matchExistingId(ied.name),
+      }));
+      await onImport(entries);
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleExcel = () => {
@@ -184,6 +191,16 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
                       <input type="checkbox" checked={isSelected} onChange={() => toggleIed(ied.name)} style={{ cursor: 'pointer' }} />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)' }}>{ied.name}</span>
+                        {(() => {
+                          const upd = matchExistingId(ied.name) !== null;
+                          return (
+                            <span style={{
+                              fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--radius-sm)',
+                              background: upd ? 'color-mix(in srgb, var(--warn, #f59e0b) 15%, transparent)' : 'color-mix(in srgb, var(--success) 15%, transparent)',
+                              color: upd ? 'var(--warn, #f59e0b)' : 'var(--success)',
+                            }}>{upd ? 'Uppfærir' : 'Nýtt'}</span>
+                          );
+                        })()}
                         {ied.desc && <span style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ied.desc}</span>}
                         {ied.lds.length > 0 && (
                           <button type="button" onClick={() => toggleExpand(ied.name)}
@@ -218,11 +235,13 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
             </div>
 
             {/* Selection summary */}
-            <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: 'var(--space-4)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
               <span>{selected.size}/{ieds.length} IED valin</span>
+              {selectedUpd > 0 && <span style={{ color: 'var(--warn, #f59e0b)' }}>{selectedUpd} uppfærðir</span>}
+              {selectedNew > 0 && <span style={{ color: 'var(--success)' }}>{selectedNew} nýir</span>}
               {stats.doDaCount > 0
-                ? <span>→ {stats.lnCount} LN · {stats.doDaCount} DO/DA færslur í sniðmáti</span>
-                : <span>→ {stats.lnCount} LN færslur í sniðmáti</span>
+                ? <span>→ {stats.lnCount} LN · {stats.doDaCount} DO/DA merki</span>
+                : <span>→ {stats.lnCount} LN merki</span>
               }
             </div>
           </>
@@ -234,19 +253,19 @@ export function ImportScdModal({ onAddEquipment, onClose }: Props) {
             {ieds.length > 0 && (
               <>
                 <Button
-                  variant="ghost"
                   size="sm"
-                  disabled={selected.size === 0}
-                  onClick={handleAddEquipment}
+                  disabled={selected.size === 0 || importing}
+                  onClick={handleImport}
                 >
-                  + Bæta IED-um við tæki
+                  {importing ? 'Flyt inn…' : `Flytja inn — ${selectedNew} nýir, ${selectedUpd} uppfærðir`}
                 </Button>
                 <Button
+                  variant="ghost"
                   size="sm"
                   disabled={selected.size === 0}
                   onClick={handleExcel}
                 >
-                  ↓ Búa til Excel sniðmát
+                  ↓ Excel sniðmát
                 </Button>
               </>
             )}
