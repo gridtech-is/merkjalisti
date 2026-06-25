@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+> # ⚠️ V1 — EKKI VIRKA ÚTGÁFAN
+> Þetta repo (`gridtech-is/merkjalisti`, GitHub Pages, gögn í `merkjalisti-data`) er **gamla útgáfan**.
+> **Virka útgáfan er V2:** `C:\Users\TheodorJónsson\Desktop\merkjalisti-v2` (`gridtech-is/merkjalisti-v2`, Supabase + Vercel).
+> Ný virkni á að fara í **V2**, ekki hér. Sjá [STADA.md](STADA.md).
+
 ## Commands
 ```bash
 npm run dev       # Vite dev server — Local: http://localhost:5173/merkjalisti/ — Network: http://192.168.8.250:5173/merkjalisti/ (LAN)
