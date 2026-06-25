@@ -8,7 +8,7 @@ import { exportAllBaysToExcel, exportEquipmentTemplate, importEquipmentFromExcel
 import { ChangelogTab } from '../components/ChangelogTab';
 import { listBays, loadBay, renameStation, sendBayForReview, deleteBay } from '../services/bayService';
 import { Card, Button, Badge } from '../components/ui';
-import { ImportScdModal } from '../components/ImportScdModal';
+import { ImportScdModal, type ScdImportEntry } from '../components/ImportScdModal';
 import type { Project, Equipment, EquipmentTemplate, Bay, BaySignal, ApparatusType, ProjectPhase, BayStatus, IedFcda } from '../types';
 import { StationSignalsTab } from '../components/StationSignalsTab';
 import { OverviewTab } from '../components/OverviewTab';
@@ -461,6 +461,54 @@ export function ProjectView() {
       setIedModels(prev => new Map(prev).set(eq.id, fcda));
     } finally {
       setModelUploading(null);
+    }
+  };
+
+  const handleScdImport = async (entries: ScdImportEntry[]) => {
+    if (!projectId) return;
+    setSaving(true);
+    try {
+      let updated = [...equipment];
+      const modelSaves: Array<{ id: string; model: IedFcda[]; iedName: string }> = [];
+
+      for (const { ied, model, existingId } of entries) {
+        if (existingId) {
+          // Uppfæra lið sem er til — eins og ICD-upphleðsla: aðeins manufacturer/model/config_version.
+          updated = updated.map(e => e.id === existingId ? {
+            ...e,
+            manufacturer: ied.manufacturer || e.manufacturer,
+            model: ied.model || e.model,
+            config_version: ied.configVersion || e.config_version,
+          } : e);
+          modelSaves.push({ id: existingId, model, iedName: ied.name });
+        } else {
+          const newEq: Equipment = {
+            id: uuid(), category: 'ied', code: ied.name, type: null,
+            ied_name: ied.name,
+            manufacturer: ied.manufacturer || null,
+            model: ied.model || null,
+            config_version: ied.configVersion || null,
+            template_id: null,
+            description: ied.desc || '',
+          };
+          updated = [...updated, newEq];
+          modelSaves.push({ id: newEq.id, model, iedName: ied.name });
+        }
+      }
+
+      await saveEquipment(updated);
+      for (const { id, model, iedName } of modelSaves) {
+        await saveModel(api, projectId, id, model, iedName);
+      }
+      setIedModels(prev => {
+        const next = new Map(prev);
+        for (const { id, model } of modelSaves) next.set(id, model);
+        return next;
+      });
+      setShowScd(false);
+      setEqTab('ied');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1162,14 +1210,8 @@ export function ProjectView() {
 
       {showScd && (
         <ImportScdModal
-          onAddEquipment={async (items) => {
-            setSaving(true);
-            try {
-              await saveEquipment([...equipment, ...items]);
-              setShowScd(false);
-              setEqTab('ied');
-            } finally { setSaving(false); }
-          }}
+          existingIeds={ieds}
+          onImport={handleScdImport}
           onClose={() => setShowScd(false)}
         />
       )}
