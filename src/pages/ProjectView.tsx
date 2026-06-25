@@ -497,16 +497,20 @@ export function ProjectView() {
       }
 
       await saveEquipment(updated);
-      for (const { id, model, iedName } of modelSaves) {
-        await saveModel(api, projectId, id, model, iedName);
+      try {
+        for (const { id, model, iedName } of modelSaves) {
+          await saveModel(api, projectId, id, model, iedName);
+        }
+        setIedModels(prev => {
+          const next = new Map(prev);
+          for (const { id, model } of modelSaves) next.set(id, model);
+          return next;
+        });
+        setShowScd(false);
+        setEqTab('ied');
+      } catch {
+        alert('Tæki voru vistuð en villa kom upp við að vista módel fyrir einn eða fleiri liði. Hlaðið ICD upp aftur fyrir þá liði.');
       }
-      setIedModels(prev => {
-        const next = new Map(prev);
-        for (const { id, model } of modelSaves) next.set(id, model);
-        return next;
-      });
-      setShowScd(false);
-      setEqTab('ied');
     } finally {
       setSaving(false);
     }
