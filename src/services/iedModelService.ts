@@ -36,6 +36,30 @@ export interface ParsedIedMeta {
   error?: string;
 }
 
+/** Flatnar ScdIed í IedFcda[] og auðgar með DataSet nöfnum úr SCD/ICD textanum. */
+export function flattenIedModelWithDataSets(ied: ScdIed, xmlText: string): IedFcda[] {
+  const flat = flattenIedModel(ied);
+  const dsFcdas = extractDataSets(xmlText, ied.name);
+  for (const dsf of dsFcdas) {
+    // Match by ldInst + lnClass + lnInst + prefix + doName + fc.
+    // daName may be absent in DataSet FCDA (references whole DO).
+    for (const f of flat) {
+      if (
+        f.ldInst === dsf.ldInst &&
+        f.lnClass === dsf.lnClass &&
+        f.lnInst === dsf.lnInst &&
+        f.prefix === dsf.prefix &&
+        f.doName === dsf.doName &&
+        f.fc === dsf.fc &&
+        (!dsf.daName || f.daName === dsf.daName || f.daName.startsWith(dsf.daName + '.'))
+      ) {
+        f.dataset = dsf.dataset;
+      }
+    }
+  }
+  return flat;
+}
+
 export function parseModel(xmlText: string): ParsedIedMeta {
   const { ieds, errors } = parseScd(xmlText);
   if (ieds.length === 0) {
@@ -43,29 +67,7 @@ export function parseModel(xmlText: string): ParsedIedMeta {
   }
   // Pick the IED with the most LDs — avoids template/stub IEDs in multi-IED files
   const ied = ieds.reduce((best, cur) => cur.lds.length > best.lds.length ? cur : best, ieds[0]);
-  const flat = flattenIedModel(ied);
-
-  // Enrich with DataSet names from <DataSet><FCDA> elements in the ICD
-  const dsFcdas = extractDataSets(xmlText, ied.name);
-  if (dsFcdas.length > 0) {
-    for (const dsf of dsFcdas) {
-      // Match by ldInst + lnClass + lnInst + prefix + doName + fc
-      // daName may be absent in DataSet FCDA (references whole DO)
-      for (const f of flat) {
-        if (
-          f.ldInst === dsf.ldInst &&
-          f.lnClass === dsf.lnClass &&
-          f.lnInst === dsf.lnInst &&
-          f.prefix === dsf.prefix &&
-          f.doName === dsf.doName &&
-          f.fc === dsf.fc &&
-          (!dsf.daName || f.daName === dsf.daName || f.daName.startsWith(dsf.daName + '.'))
-        ) {
-          f.dataset = dsf.dataset;
-        }
-      }
-    }
-  }
+  const flat = flattenIedModelWithDataSets(ied, xmlText);
 
   return {
     fcda: flat,
